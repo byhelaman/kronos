@@ -1,0 +1,27 @@
+fastapi
+uvicorn[standard]
+gunicorn
+
+# Plantillas y formularios
+jinja2
+python-multipart
+
+# Conexión a Base de Datos (Redis)
+redis
+
+# Lógica de Negocio (Procesamiento de Excel)
+pandas
+openpyxl
+xlrd
+
+# Configuración y Modelos
+pydantic
+pydantic-settings
+
+# Middlewares y Seguridad
+slowapi
+
+# Dependencias originales (pueden ser necesarias para tu entorno)
+aiofiles
+werkzeug
+starlette

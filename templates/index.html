@@ -1,0 +1,56 @@
+{% extends "base.html" %} {% block content %} {% import "macros/icons.html" as
+icons %} {% include "header.html" %}
+<section class="features-grid">
+  <a href="/generate-schedule" class="feature-card">
+    <div class="feature-icon-container">
+      <span class="feature-icon">{{ icons.CalendarCogIcon() }}</span>
+      <span class="feature-arrow">{{ icons.ChevronRightIcon(20) }}</span>
+    </div>
+    <h4 class="feature-title">Generate Schedule</h4>
+    <p class="feature-description">Extract the schedule information</p>
+  </a>
+
+  {% if is_admin %}
+  <!-- <a href="/search-link" class="feature-card"> -->
+  <a href="/#" class="feature-card">
+    <div class="feature-icon-container">
+      <span class="feature-icon">{{ icons.SearchIcon() }}</span>
+      <span class="feature-arrow">{{ icons.ChevronRightIcon(20) }}</span>
+    </div>
+    <h4 class="feature-title">Search link</h4>
+    <p class="feature-description">Assigns classes automatically</p>
+  </a>
+
+  <!-- <a href="/assign-classes" class="feature-card"> -->
+  <a href="/#" class="feature-card">
+    <div class="feature-icon-container">
+      <span class="feature-icon">{{ icons.RestoreIcon() }}</span>
+      <span class="feature-arrow">{{ icons.ChevronRightIcon(20) }}</span>
+    </div>
+    <h4 class="feature-title">Assign classes</h4>
+    <p class="feature-description">Assigns classes automatically</p>
+  </a>
+
+  <!-- <a href="/create-links" class="feature-card"> -->
+  <a href="#" class="feature-card">
+    <div class="feature-icon-container">
+      <span class="feature-icon">{{ icons.LinkIcon() }}</span>
+      <span class="feature-arrow">{{ icons.ChevronRightIcon(20) }}</span>
+    </div>
+    <h4 class="feature-title">Create links</h4>
+    <p class="feature-description">Create links for groups or private</p>
+  </a>
+
+  <!-- <a href="#" class="feature-card">
+    <div class="feature-icon-container">
+      <span class="feature-icon">{{ icons.RadioIcon() }}</span>
+      <span class="feature-arrow">{{ icons.ChevronRightIcon(20) }}</span>
+    </div>
+    <h4 class="feature-title">Monitor meetings</h4>
+    <p class="feature-description">Watch the meetings live</p>
+  </a> -->
+
+  {% endif %}
+</section>
+
+{% include "social.html" %} {% endblock %}

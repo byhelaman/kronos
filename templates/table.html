@@ -1,0 +1,226 @@
+<section class="data-preview">
+  <h4>Data Preview</h4>
+
+  <div class="dashboard-toolbar">
+    <div class="wrap-toolbar">
+      <div class="toolbar-stats">
+        <div class="wrap-toolbar-stats">
+          <span class="stat-item">Items: <span id="stat-items">---</span></span>
+          <span class="stat-item stat-item--warning"
+            >Overlaps: <span id="stat-overlaps">--</span></span
+          >
+        </div>
+        <!-- boton para cambiar vista -->
+        <button
+          type="button"
+          id="toggle-columns-btn"
+          class="btn btn--icon btn--secondary"
+          aria-label="All columns"
+        >
+          {{ icons.SplitIcon(16) }}
+        </button>
+      </div>
+      <span class="split"></span>
+
+      <form
+        id="selection-form"
+        class="selection-info"
+        action="/delete-rows"
+        method="POST"
+      >
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <span class="selection-text"
+          >Selected: <span id="stat-selected">0</span></span
+        >
+        <input type="hidden" name="selected_ids" id="selected_ids" />
+        <button
+          type="submit"
+          class="btn btn--icon btn--danger"
+          aria-label="Delete selected"
+          disabled
+        >
+          {{ icons.TrashIcon(16) }}
+        </button>
+      </form>
+    </div>
+
+    <div class="toolbar-actions">
+      <!-- <button type="button" class="btn btn--icon" aria-label="Copy">
+        {{ icons.CopyIcon(14) }}
+      </button> -->
+
+      <div class="dropdown-container">
+        <button
+          type="button"
+          class="btn btn--icon"
+          id="copy-menu-btn"
+          aria-label="Copy options"
+          aria-haspopup="true"
+          aria-expanded="false"
+        >
+          {{ icons.CopyIcon(14) }}
+        </button>
+        <div id="copy-menu" class="dropdown-menu">
+          <ul class="dropdown-menu-list">
+            <li>
+              <button
+                type="button"
+                id="copy-selected-action"
+                class="dropdown-menu-item"
+                disabled
+              >
+                Copy selected rows
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                id="copy-schedule-action"
+                class="dropdown-menu-item"
+              >
+                Copy schedule
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                id="copy-instructors-action"
+                class="dropdown-menu-item"
+              >
+                Copy instructors
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <span class="split"></span>
+      <div class="wrap-toolbar-actions">
+        <button type="button" class="btn btn--icon" aria-label="Upload data" disabled>
+          {{ icons.CloudUploadIcon(16) }}
+        </button>
+
+        <form
+          id="restore-form"  action="/restore-rows"
+          method="POST"
+        >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+         <button type="submit" class="btn btn--icon" aria-label="Restore data" {% if num_deleted|default(0) == 0 %} disabled {% endif %}>
+            {{ icons.RestoreIcon(16) }}
+          </button>
+        </form>
+
+        <!-- <button type="button" class="btn btn--icon" aria-label="Restore data">
+          {{ icons.RestoreIcon(16) }}
+        </button> -->
+
+        <form
+          id="delete-data-form" action="/delete-data"
+          method="POST"
+          >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn btn--icon" aria-label="Delete data">
+            {{ icons.TrashIcon(16) }}
+          </button>
+        </form>
+
+        <!-- <button type="button" class="btn btn--icon" aria-label="Delete data">
+          {{ icons.TrashIcon(16) }}
+        </button> -->
+      </div>
+      <span class="split"></span>
+      <a
+        href="/download-excel"
+        class="btn btn--primary"
+        aria-label="Download as Excel"
+      >
+        <span class="btn-text">
+          <span>Download</span>
+          {{ icons.DownloadIcon(16) }}
+        </span>
+        <span class="btn-loader">
+          <span>Download</span>
+          {{ icons.LoaderIcon(16) }}
+        </span>
+      </a>
+      <!-- <button
+        type="button"
+        class="btn btn--primary"
+        aria-label="Download as Excel"
+      >
+        <span>Download</span>
+        {{ icons.DownloadIcon(16) }}
+      </button> -->
+    </div>
+  </div>
+
+  <div class="table-container">
+    <table class="data-table" id="data-preview-table">
+      <thead>
+        <tr>
+          <th>
+            <input
+              type="checkbox"
+              id="select-all"
+              aria-label="Select all rows"
+            />
+          </th>
+          <th>Date</th>
+          <th class="col-extra">Shift</th>
+          <th>Area</th>
+          <th class="col-simple">Time</th>
+          <th class="col-extra">Start Time</th>
+          <th class="col-extra">End Time</th>
+          <th class="col-extra">Code</th>
+          <th>Instructor</th>
+          <th>Group</th>
+          <th>Mins</th>
+          <th>Units</th>
+        </tr>
+      </thead>
+<tbody>
+        {% if data and data|length > 0 %} {% for row in data %}
+        <tr
+          data-id="{{ row.id }}"
+          class="{{ 'row--warning' if row.data.units == 0 else '' }}"
+        >
+          <td><input type="checkbox" class="row-select" /></td>
+
+          <td>{{ row.data.date }}</td>
+          <td class="col-extra">{{ row.data.shift }}</td>
+          <td>{{ row.data.area }}</td>
+          <td class="col-simple">{{ row.data.start_time }} - {{ row.data.end_time }}</td>
+          <td class="col-extra">{{ row.data.start_time }}</td>
+          <td class="col-extra">{{ row.data.end_time }}</td>
+          <td class="col-extra">{{ row.data.code }}</td>
+          <td>{{ row.data.instructor }}</td>
+          <td>{{ row.data.group }}</td>
+          <td>{{ row.data.minutes }}</td>
+          <td>{{ row.data.units }}</td>
+        </tr>
+        {% endfor %} {% else %}
+        <tr>
+          <td colspan="12" style="text-align: center; padding: 2rem">
+            No data processed. Please upload files to begin.
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div id="row-context-menu" class="context-menu">
+  <ul class="context-menu-list">
+    <li>
+      <button type="button" id="copy-row-action" class="context-menu-item">
+        <span>Copy row</span>
+      </button>
+    </li>
+    <li>
+      <button type="button" id="deselect-all-action" class="context-menu-item" >
+        <span>Deselect all</span>
+      </button>
+    </li>
+  </ul>
+</div>

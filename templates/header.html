@@ -1,0 +1,84 @@
+{% import "macros/icons.html" as icons %}
+
+<header class="dashboard-header">
+  <div class="top-bar">
+    <div class="header-info">
+      <h2 class="header-title">{{ title | default("WaaaHub") }}</h2>
+
+      <p class="header-subtitle">
+        {{ description | default("Apps to automate your work") }}
+      </p>
+    </div>
+  </div>
+
+  <section class="user-section">
+    <div class="user-info">
+      <button
+        id="user-menu-btn"
+        class="user-profile-btn btn--icon"
+        aria-label="Profile"
+        aria-haspopup="true"
+        aria-expanded="false"
+      >
+        {{ icons.UserIcon(16) }}
+      </button>
+
+      <div id="user-menu" class="user-menu">
+        <div class="user-menu-header">
+          <span class="user-menu-name">@guest.com</span>
+        </div>
+        <ul class="user-menu-list">
+          <li>
+            <a href="/" class="user-menu-item">Back to menu</a>
+          </li>
+          <li>
+            <button id="theme-toggle-btn" class="user-menu-item" type="button">
+              <span id="theme-toggle-text">Change theme</span>
+            </button>
+          </li>
+          <li>
+            <a href="/" class="user-menu-item">Log out</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</header>
+
+<script>
+  (() => {
+    if (localStorage.getItem("theme") === "dark") {
+      document.documentElement.classList.add("dark");
+    }
+  })();
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const themeToggleBtn = document.getElementById("theme-toggle-btn");
+    const themeToggleText = document.getElementById("theme-toggle-text");
+    const htmlEl = document.documentElement;
+
+    function updateButtonState() {
+      if (htmlEl.classList.contains("dark")) {
+        themeToggleText.textContent = "Light Mode";
+      } else {
+        themeToggleText.textContent = "Dark Mode";
+      }
+    }
+
+    updateButtonState();
+
+    if (themeToggleBtn) {
+      themeToggleBtn.addEventListener("click", () => {
+        htmlEl.classList.toggle("dark");
+
+        if (htmlEl.classList.contains("dark")) {
+          localStorage.setItem("theme", "dark");
+        } else {
+          localStorage.setItem("theme", "light");
+        }
+
+        updateButtonState();
+      });
+    }
+  });
+</script>

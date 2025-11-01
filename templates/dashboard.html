@@ -1,0 +1,85 @@
+{% import "macros/icons.html" as icons %}
+
+<div class="dashboard-content">
+  <section class="dashboard-filters">
+    <div class="dashboard-filters-header">
+      <h4>Filter Data</h4>
+      <a href="/upload-new" class="btn btn--secondary">
+        {{ icons.FileUpIcon(16) }} Add New File
+      </a>
+    </div>
+    <form class="filter-form" id="filter-form">
+      <div class="filter-group-slipt">
+        <div class="filter-group">
+          <label for="filter-instructor">by Instructor:</label>
+          <input
+            type="text"
+            id="filter-instructor"
+            name="instructor"
+            placeholder="Instructor name..."
+          />
+        </div>
+        <div class="filter-group">
+          <label for="filter-group">by Group:</label>
+          <input
+            type="text"
+            id="filter-group"
+            name="group"
+            placeholder="Group name..."
+          />
+        </div>
+      </div>
+      <div class="filter-group filter-group--checkbox">
+        <input type="checkbox" id="filter-overlaps" name="overlaps" />
+        <label for="filter-overlaps">Show Overlaps Only</label>
+      </div>
+      <button type="reset" class="btn btn--secondary">Clear filters</button>
+    </form>
+  </section>
+
+  {% include "table.html" %}
+</div>
+
+<style>
+  .data-table .col-extra {
+    display: table-cell;
+  }
+  .data-table .col-simple {
+    display: none;
+  }
+
+  .data-table.view-simple .col-extra {
+    display: none;
+  }
+  .data-table.view-simple .col-simple {
+    display: table-cell;
+    text-align: center;
+  }
+
+  .is-active {
+    background: var(--color-background-grey-hover);
+  }
+</style>
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const toggleBtn = document.getElementById("toggle-columns-btn");
+    const dataTable = document.getElementById("data-preview-table");
+
+    if (toggleBtn && dataTable) {
+      toggleBtn.setAttribute("aria-label", "Simple columns");
+
+      toggleBtn.addEventListener("click", () => {
+        dataTable.classList.toggle("view-simple");
+        toggleBtn.classList.toggle("is-active");
+
+        const isSimpleView = dataTable.classList.contains("view-simple");
+
+        toggleBtn.setAttribute(
+          "aria-label",
+          isSimpleView ? "All columns" : "Simple columns"
+        );
+      });
+    }
+  });
+</script>

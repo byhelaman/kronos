@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="{{ url_for('static', path='/css/styles.css') }}"
+      rel="stylesheet"
+    />
+    <title>BerlitzHub</title>
+  </head>
+  <body>
+    <main class="main main--dashboard">
+      <div class="dashboard-container">{% block content %}{% endblock %}</div>
+    </main>
+  </body>
+  <script
+    type="module"
+    src="{{ url_for('static', path='/js/script.js') }}"
+  ></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const userMenuBtn = document.getElementById("user-menu-btn");
+      const userMenu = document.getElementById("user-menu");
+
+      if (userMenuBtn && userMenu) {
+        userMenuBtn.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const isShown = userMenu.classList.toggle("user-menu--show");
+          userMenuBtn.setAttribute("aria-expanded", isShown);
+        });
+
+        document.addEventListener("click", (event) => {
+          if (
+            !userMenu.contains(event.target) &&
+            !userMenuBtn.contains(event.target)
+          ) {
+            userMenu.classList.remove("user-menu--show");
+            userMenuBtn.setAttribute("aria-expanded", "false");
+          }
+        });
+      }
+
+      // Solución para tooltips pegajosos
+      const tooltipElements = document.querySelectorAll(
+        "button[aria-label], a[aria-label]"
+      );
+
+      // --- === CÓDIGO NUEVO PARA EL MENÚ DE COPIAR === ---
+      const copyMenuBtn = document.getElementById("copy-menu-btn");
+      const copyMenu = document.getElementById("copy-menu");
+
+      if (copyMenuBtn && copyMenu) {
+        copyMenuBtn.addEventListener("click", (event) => {
+          event.stopPropagation();
+          // Cierra el menú de usuario si está abierto
+          if (userMenu) {
+            userMenu.classList.remove("user-menu--show");
+            userMenuBtn.setAttribute("aria-expanded", "false");
+          }
+          const isShown = copyMenu.classList.toggle("dropdown-menu--show");
+          copyMenuBtn.setAttribute("aria-expanded", isShown);
+        });
+
+        document.addEventListener("click", (event) => {
+          if (
+            !copyMenu.contains(event.target) &&
+            !copyMenuBtn.contains(event.target)
+          ) {
+            copyMenu.classList.remove("dropdown-menu--show");
+            copyMenuBtn.setAttribute("aria-expanded", "false");
+          }
+        });
+      }
+      // --- === FIN DEL CÓDIGO NUEVO === ---
+
+      tooltipElements.forEach((el) => {
+        el.addEventListener("click", () => {
+          // Inmediatamente después del clic, quita el foco
+          el.blur();
+        });
+      });
+
+      // --- === CÓDIGO NUEVO PARA EL BOTÓN DE DESCARGA === ---
+      const downloadBtn = document.getElementById("download-btn");
+      if (downloadBtn) {
+        downloadBtn.addEventListener("click", () => {
+          // Muestra el estado de carga. Es solo visual,
+          // el navegador se encarga de la descarga.
+          downloadBtn.classList.add("is-loading");
+        });
+
+        // Resetea el botón si el usuario vuelve con "Atrás" (bfcache)
+        window.addEventListener("pageshow", function (event) {
+          if (downloadBtn) {
+            downloadBtn.classList.remove("is-loading");
+          }
+        });
+      }
+      // --- === FIN DEL CÓDIGO NUEVO === ---
+    });
+  </script>
+</html>
