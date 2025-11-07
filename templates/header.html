@@ -3,7 +3,7 @@
 <header class="dashboard-header">
   <div class="top-bar">
     <div class="header-info">
-      <h2 class="header-title">{{ title | default("WaaaHub") }}</h2>
+      <h2 class="header-title">{{ title | default("AppHub") }}</h2>
 
       <p class="header-subtitle">
         {{ description | default("Apps to automate your work") }}
@@ -13,37 +13,85 @@
 
   <section class="user-section">
     <div class="user-info">
-      <button
-        id="user-menu-btn"
-        class="user-profile-btn btn--icon"
-        aria-label="Profile"
-        aria-haspopup="true"
-        aria-expanded="false"
-      >
+      {% if request.path != '/' %}
+      <a href="/" class="btn btn--icon" aria-label="Back to menu">
+        {{ icons.ChevronLeftIcon(16) }}
+      </a>
+      {% endif %}
+
+      <button id="user-menu-btn" class="user-profile-btn btn--icon" aria-label="Profile" aria-haspopup="true"
+        aria-expanded="false">
         {{ icons.UserIcon(16) }}
+      </button>
+
+      <button id="theme-toggle-btn" class="btn btn--icon" type="button" aria-label="Change theme">
+        <span class="theme-icon theme-icon--sun">
+          {{ icons.SunIcon(16) }}
+        </span>
+        <span class="theme-icon theme-icon--moon">
+          {{ icons.MoonIcon(16) }}
+        </span>
       </button>
 
       <div id="user-menu" class="user-menu">
         <div class="user-menu-header">
-          <span class="user-menu-name">@guest.com</span>
+          <span class="user-menu-name">
+            {% if is_authenticated and current_user %}
+            {{ current_user.full_name }}
+            {% else %}
+            Guest User
+            {% endif %}
+          </span>
         </div>
         <ul class="user-menu-list">
-          <li>
+          <!-- <li>
             <a href="/" class="user-menu-item">Back to menu</a>
           </li>
           <li>
             <button id="theme-toggle-btn" class="user-menu-item" type="button">
               <span id="theme-toggle-text">Change theme</span>
             </button>
+          </li> -->
+          {% if is_authenticated %}
+          <li>
+            <a href="/profile" class="user-menu-item">Account</a>
           </li>
           <li>
-            <a href="/" class="user-menu-item">Log out</a>
+            <a href="/logout" class="user-menu-item">Log out</a>
           </li>
+          {% else %}
+          <li>
+            <a href="/login" class="user-menu-item">Log in</a>
+          </li>
+          {% endif %}
         </ul>
       </div>
     </div>
   </section>
 </header>
+<style>
+  .theme-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .theme-icon--sun {
+    display: none;
+  }
+
+  .theme-icon--moon {
+    display: inline-flex;
+  }
+
+  html.dark .theme-icon--sun {
+    display: inline-flex;
+  }
+
+  html.dark .theme-icon--moon {
+    display: none;
+  }
+</style>
 
 <script>
   (() => {
@@ -54,14 +102,13 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     const themeToggleBtn = document.getElementById("theme-toggle-btn");
-    const themeToggleText = document.getElementById("theme-toggle-text");
     const htmlEl = document.documentElement;
 
     function updateButtonState() {
       if (htmlEl.classList.contains("dark")) {
-        themeToggleText.textContent = "Light Mode";
+        themeToggleBtn.setAttribute("aria-label", "Light Mode");
       } else {
-        themeToggleText.textContent = "Dark Mode";
+        themeToggleBtn.setAttribute("aria-label", "Dark Mode");
       }
     }
 

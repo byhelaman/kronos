@@ -10,26 +10,26 @@ icons %} {% include "header.html" %}
     <p class="feature-description">Extract the schedule information</p>
   </a>
 
-  {% if is_admin %}
+  {% if is_authenticated and current_user %}
   <!-- <a href="/search-link" class="feature-card"> -->
-  <a href="/#" class="feature-card">
+  <!-- <a href="/#" class="feature-card">
     <div class="feature-icon-container">
       <span class="feature-icon">{{ icons.SearchIcon() }}</span>
       <span class="feature-arrow">{{ icons.ChevronRightIcon(20) }}</span>
     </div>
     <h4 class="feature-title">Search link</h4>
     <p class="feature-description">Assigns classes automatically</p>
-  </a>
+  </a> -->
 
   <!-- <a href="/assign-classes" class="feature-card"> -->
-  <a href="/#" class="feature-card">
+  <!-- <a href="/#" class="feature-card">
     <div class="feature-icon-container">
       <span class="feature-icon">{{ icons.RestoreIcon() }}</span>
       <span class="feature-arrow">{{ icons.ChevronRightIcon(20) }}</span>
     </div>
     <h4 class="feature-title">Assign classes</h4>
     <p class="feature-description">Assigns classes automatically</p>
-  </a>
+  </a> -->
 
   <!-- <a href="/create-links" class="feature-card"> -->
   <a href="#" class="feature-card">

@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block content %}
+{% import "macros/icons.html" as icons %}
+
+{% include "header.html" %}
+
+<div class="profile-container">
+
+    {% if request.query_params.get('success') == 'zoom_linked' %}
+    <div class="form-message form-message--success">
+        ¡Cuenta de Zoom vinculada correctamente!
+    </div>
+    {% endif %}
+
+    {% if request.query_params.get('error') == 'zoom_link_failed' %}
+    <div class="form-message form-message--error">
+        {{ icons.AlertTriangleIcon(16) }}
+        No se pudo vincular la cuenta de Zoom. Inténtalo de nuevo.
+    </div>
+    {% endif %}
+
+
+    <div class="profile-card">
+        <h4 class="profile-card-title">Información de Usuario</h4>
+        <div class="profile-info">
+            <span class="profile-info-label">Nombre:</span>
+            <span class="profile-info-value">{{ current_user.full_name }}</span>
+        </div>
+        <div class="profile-info">
+            <span class="profile-info-label">Usuario:</span>
+            <span class="profile-info-value">{{ current_user.username }}</span>
+        </div>
+        <div class="profile-info">
+            <span class="profile-info-label">ID Interno:</span>
+            <span class="profile-info-value">{{ current_user.id }}</span>
+        </div>
+    </div>
+
+    <div class="profile-card">
+        <h4 class="profile-card-title">Vinculaciones de API</h4>
+
+        <div class="zoom-linking-section">
+            <div class="zoom-info">
+                <span class="zoom-icon"></span>
+                <strong>Zoom API</strong>
+            </div>
+
+            {% if is_zoom_linked %}
+            <div class="link-status link-status--linked">
+                <span>Vinculada (Zoom User ID: {{ user.zoom_user_id }})</span>
+            </div>
+            <!-- Opcional: Añadir un botón para desvincular -->
+            <!-- 
+                <form action="/auth/zoom/unlink" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <button type="submit" class="btn btn--secondary">Desvincular</button>
+                </form>
+            -->
+            {% else %}
+            <div class="link-status link-status--unlinked">
+                <span>No vinculada</span>
+            </div>
+            <a href="/auth/zoom" class="btn btn--primary">
+                <span>Vincular cuenta de Zoom</span>
+            </a>
+            {% endif %}
+
+        </div>
+
+    </div>
+
+</div>
+
+<style>
+    .profile-container {
+        max-width: 600px;
+        margin: 2rem auto;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .profile-card {
+        padding: 1.5rem;
+        background: var(--color-background-secondary);
+        border-radius: var(--border-radius-md);
+        border: 1px solid var(--color-border);
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .profile-card-title {
+        font-size: 1.125rem;
+        font-weight: 600;
+        margin: 0;
+        color: var(--color-text-primary);
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .profile-info {
+        display: grid;
+        grid-template-columns: 100px 1fr;
+        gap: 1rem;
+        font-size: 0.875rem;
+    }
+
+    .profile-info-label {
+        color: var(--color-text-secondary);
+        font-weight: 500;
+    }
+
+    .profile-info-value {
+        color: var(--color-text-primary);
+        font-family: var(--font-mono);
+    }
+
+    .zoom-linking-section {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        align-items: flex-start;
+    }
+
+    .zoom-info {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 1rem;
+        font-weight: 500;
+    }
+
+    .zoom-icon {
+        display: inline-flex;
+        padding: 0.5rem;
+        background: #2D8CFF;
+        /* Zoom Blue */
+        color: white;
+        border-radius: var(--border-radius-sm);
+    }
+
+    .link-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        padding: 0.25rem 0.5rem;
+        border-radius: var(--border-radius-sm);
+    }
+
+    .link-status--linked {
+        color: var(--color-success-text);
+        background-color: var(--color-success-background);
+    }
+
+    .link-status--unlinked {
+        color: var(--color-text-secondary);
+        background-color: var(--color-background-grey);
+    }
+
+    .form-message {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 1rem;
+        border: 1px solid;
+        border-radius: var(--border-radius-sm);
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+
+    .form-message--success {
+        background-color: var(--color-success-background);
+        border-color: var(--color-success-border);
+        color: var(--color-success-text);
+    }
+
+    .form-message--error {
+        background-color: var(--color-danger-background);
+        border-color: var(--color-danger-border);
+        color: var(--color-danger-text);
+    }
+</style>
+{% endblock %}

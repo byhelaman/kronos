@@ -25,3 +25,11 @@ slowapi
 aiofiles
 werkzeug
 starlette
+
+passlib
+bcrypt==4.0.1
+sqlalchemy
+asyncpg
+alembic
+aiosqlite
+httpx

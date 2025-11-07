@@ -32,3 +32,6 @@ dist/
 # Archivos temporales
 *.tmp
 *.temp
+
+# database
+*.db

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block content %}
+{% import "macros/icons.html" as icons %}
+
+{% include "header.html" %}
+
+<div class="login-container">
+
+    <form class="login-form" action="/login" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+
+        {% if request.query_params.get('error') %}
+        <div class="form-error-message">
+            {{ icons.AlertTriangleIcon(16) }}
+            Usuario o contraseña incorrectos.
+        </div>
+        {% endif %}
+
+        {% if request.query_params.get('error') == 'zoom_auth_failed' %}
+        <div class="form-error-message">
+            {{ icons.AlertTriangleIcon(16) }}
+            Debes iniciar sesión antes de vincular tu cuenta de Zoom.
+        </div>
+        {% endif %}
+
+
+        <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" placeholder="jhon.doe" required autofocus />
+        </div>
+
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" placeholder="••••••••" required />
+        </div>
+
+        <button type="submit" class="btn btn--primary btn--full-width">
+            <span>Iniciar Sesión</span>
+        </button>
+    </form>
+
+</div>
+
+<style>
+    .login-container {
+        max-width: 400px;
+        margin: 2rem auto;
+        padding: 2rem;
+        background: var(--color-background-secondary);
+        border-radius: var(--border-radius-md);
+        border: 1px solid var(--color-border);
+    }
+
+    .login-form {
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .form-group label {
+        font-weight: 500;
+        font-size: 0.875rem;
+        color: var(--color-text-primary);
+    }
+
+    .form-group input {
+        padding: 0.75rem;
+        border: 1px solid var(--color-border);
+        border-radius: var(--border-radius-sm);
+        background: var(--color-background);
+        color: var(--color-text-primary);
+        font-size: 1rem;
+    }
+
+    .form-group input:focus {
+        outline: 2px solid var(--color-primary);
+        border-color: transparent;
+    }
+
+    .btn--full-width {
+        width: 100%;
+        margin-top: 0.5rem;
+    }
+
+    .form-error-message {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        background-color: var(--color-danger-background);
+        border: 1px solid var(--color-danger-border);
+        color: var(--color-danger-text);
+        border-radius: var(--border-radius-sm);
+        font-size: 0.875rem;
+    }
+</style>
+
+{% endblock %}

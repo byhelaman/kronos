@@ -60,6 +60,8 @@
   --color-text-upload: var(--color-primary);
   --color-hover-upload: var(--color-primary-bg-light);
 
+  --color-user-name: var(--color-primary);
+
   --transition-default: all 0.3s ease;
 }
 
@@ -764,7 +766,7 @@ a {
 
 .user-info {
   position: relative;
-  display: inline-block;
+  /* display: inline-block; */
 }
 
 .user-menu {
@@ -806,7 +808,7 @@ a {
 .user-menu-name {
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-primary);
+  color: var(--color-user-name);
 }
 
 .user-menu-list {
@@ -1056,6 +1058,8 @@ html.dark {
   --color-border-upload: #e0e0e0;
   --color-text-upload: #e0e0e0;
   --color-hover-upload: #2c2c2c;
+
+  --color-user-name: var(--color-text-primary);
 }
 
 html.filter-group input[type="search"]:focus {
