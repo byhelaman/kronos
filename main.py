@@ -58,9 +58,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        # CSP básica - ajustar según necesidades específicas
+
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "connect-src 'self'; "
+            "form-action 'self'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none';"
         )
         return response
 
@@ -406,15 +413,12 @@ async def delete_selected_rows(
     selected_ids: str = Form(...),
     is_csrf_valid: bool = Depends(security.validate_csrf),
 ):
-    if len(selected_ids) > config.MAX_SELECTED_IDS_LENGTH:
+    # Validar y filtrar UUIDs
+    ids_to_delete = security.validate_uuid_list(selected_ids)
+
+    if not ids_to_delete:
         return JSONResponse(
-            {"success": False, "message": "Payload too large."}, status_code=413
-        )
-    try:
-        ids_to_delete = {str(i) for i in selected_ids.split(",")}
-    except ValueError:
-        return JSONResponse(
-            {"success": False, "message": "Invalid ID format."}, status_code=400
+            {"success": False, "message": "No valid IDs provided."}, status_code=400
         )
 
     schedule_data = request.state.session.get(
@@ -565,6 +569,12 @@ async def admin_delete_user(
     """
     Eliminar usuario (solo para admins)
     """
+    # Validar que el user_id sea un UUID válido
+    if not security.validate_uuid(user_id):
+        return RedirectResponse(
+            url="/admin/users?error=invalid_user_id", status_code=303
+        )
+
     try:
         await auth.delete_user_from_db(db, user_id, current_user.id)
         return RedirectResponse(
@@ -572,3 +582,13 @@ async def admin_delete_user(
         )
     except HTTPException as e:
         return RedirectResponse(url=f"/admin/users?error={e.detail}", status_code=303)
+
+
+# Agregar validación en cualquier otro endpoint que reciba IDs
+async def validate_user_id(user_id: str):
+    """Dependencia para validar user_id en paths"""
+    if not security.validate_uuid(user_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format"
+        )
+    return user_id
