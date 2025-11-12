@@ -82,6 +82,10 @@ async def validate_csrf(request: Request, csrf_token: str = Form(...)):
 
 
 def get_or_create_csrf_token(session: dict) -> str:
-    token = secrets.token_hex(32)
-    session["csrf_token"] = token
+    # --- MODIFICADO ---
+    token = session.get("csrf_token")
+    if not token:
+        token = secrets.token_hex(32)
+        session["csrf_token"] = token
     return token
+    # --- FIN MODIFICACIÓN ---
