@@ -1,14 +1,14 @@
-# auth.py
 import uuid
 from fastapi import Request, Depends, HTTPException, status
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from database import get_db
 import db_models
 import security
+import schedule_service
 
 
 # --- Modelo de Usuario ---
@@ -28,19 +28,26 @@ class User(BaseModel):
 async def authenticate_user(
     db: AsyncSession, username: str, password: str
 ) -> Optional[db_models.User]:
-    query = select(db_models.User).where(
-        db_models.User.username == username, db_models.User.is_active == True
-    )
-    result = await db.execute(query)
-    user = result.scalar_one_or_none()
+    try:
+        query = select(db_models.User).where(
+            db_models.User.username == username, db_models.User.is_active == True
+        )
+        result = await db.execute(query)
+        user = result.scalar_one_or_none()
 
-    if not user:
-        return None
+        if not user:
+            return None
 
-    if not security.verify_password(password, user.hashed_password):
-        return None
+        if not security.verify_password(password, user.hashed_password):
+            return None
 
-    return user
+        return user
+
+    except Exception as e:
+        print(f"Error de autenticación: {e}")
+        # Forzar refresh de la conexión
+        await db.rollback()
+        raise
 
 
 async def get_user_from_db(db: AsyncSession, user_id: str) -> Optional[db_models.User]:
@@ -63,6 +70,51 @@ async def save_zoom_tokens_for_user(
         db.add(user)
         await db.commit()
         await db.refresh(user)
+
+
+# --- NUEVAS FUNCIONES DE GESTIÓN DE HORARIOS ---
+
+
+async def get_schedule_from_db(
+    db: AsyncSession, user_id: str
+) -> Optional[Dict[str, Any]]:
+    """Recupera el schedule_data de un usuario desde la BD."""
+    schedule_obj = await db.get(db_models.UserSchedule, user_id)
+    if schedule_obj:
+        return schedule_obj.schedule_data
+    return None
+
+
+async def save_schedule_to_db(
+    db: AsyncSession, user_id: str, schedule_data: Dict[str, Any]
+):
+    """
+    Guarda (actualiza o crea) el schedule_data para un usuario en la BD.
+    Esta función hace un "upsert" de forma atómica usando merge.
+    """
+
+    # 1. Crear una instancia del modelo con los datos
+    #    (incluyendo la clave primaria)
+    schedule_to_merge = db_models.UserSchedule(
+        user_id=user_id, schedule_data=schedule_data
+    )
+
+    # 2. Usar merge()
+    # merge() buscará por la PK (user_id).
+    # Si existe, actualizará 'schedule_data'.
+    # Si no existe, creará el nuevo registro.
+    # Todo esto ocurre dentro de la transacción de la sesión.
+    await db.merge(schedule_to_merge)
+
+    # 3. Commit (manejado por el endpoint o el middleware que llamó a esta función)
+    # ¡Corrección! Esta función SÍ hace commit, como dice el comentario original.
+    # Debemos mantener el commit.
+    try:
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        print(f"Error en save_schedule_to_db (merge): {e}")
+        raise e
 
 
 # --- Funciones de gestión de usuarios (para admins) ---

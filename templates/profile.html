@@ -53,9 +53,9 @@
                 <div class="link-status link-status--unlinked">
                     <span>Not Linked</span>
                 </div>
-                <a href="/auth/zoom" class="btn btn--primary">
+                <button class="btn btn--primary" id="zoom-auth-btn">
                     <span>Link Zoom Account</span>
-                </a>
+                </button>
                 {% endif %}
             </div>
         </div>
@@ -68,5 +68,19 @@
         {% endif %}
     </div>
 </div>
+<script>
+    document.getElementById('zoom-auth-btn').addEventListener('click', function () {
+        const width = 600;
+        const height = 600;
+        const left = (window.innerWidth - width) / 2;
+        const top = (window.innerHeight - height) / 2;
+
+        window.open(
+            '/auth/zoom',
+            'zoomAuth',
+            `width=${width},height=${height},left=${left},top=${top}`
+        );
+    });
+</script>
 
 {% endblock %}

@@ -375,7 +375,7 @@ a {
     border-radius: 10px;
     box-shadow: var(--box-shadow-dropdown);
     z-index: 100;
-    min-width: 11.25rem;
+    min-width: 10rem;
     padding: 4px;
     overflow: hidden;
 }
@@ -593,7 +593,7 @@ a {
 }
 
 .upload-form-actions {
-    max-width: 22rem;
+    /* max-width: 22rem; */
     display: flex;
     justify-content: flex-end;
     align-items: center;
@@ -609,7 +609,7 @@ a {
     padding: var(--space-xxl) var(--space-lg);
     width: 100%;
     min-height: 12rem;
-    max-width: 22rem;
+    /* max-width: 22rem; */
     border: 2px dashed var(--color-border-upload);
     border-radius: var(--border-radius-lg);
     color: var(--color-text-upload);
@@ -639,7 +639,7 @@ a {
     flex-direction: column;
     gap: var(--space-sm);
     width: 100%;
-    max-width: 22rem;
+    /* max-width: 22rem; */
     margin-top: var(--space-xs);
     padding: 0;
     list-style: none;
@@ -946,14 +946,6 @@ a {
     position: relative;
     z-index: 2;
 }
-
-/* .data-table tbody tr.selected-row:hover {
-    background-color: var(--color-primary-bg-light);
-    outline: 2px solid var(--color-primary);
-    outline-offset: -2px;
-    position: relative;
-    z-index: 2;
-} */
 
 .data-table th:nth-child(1) input[type="checkbox"],
 .data-table td:nth-child(1) input[type="checkbox"] {

@@ -10,6 +10,11 @@ import config
 engine = create_async_engine(
     config.DATABASE_URL,
     echo=True,  # Activa el log de SQL (útil para debug)
+    pool_pre_ping=True,
+    pool_recycle=300,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
 )
 
 # 2. Creador de sesiones asíncronas

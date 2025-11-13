@@ -120,18 +120,49 @@ async def login_get(request: Request):
 
 
 @app.post("/login", response_class=RedirectResponse)
-@security.limiter.limit("5/minute")  # ¡RATE LIMITING AGREGADO!
+@security.limiter.limit("5/minute")
 async def login_post(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
     db: AsyncSession = Depends(get_db),
 ):
+    # 1. Capturar el schedule del invitado ANTES de rotar la sesión
+    guest_schedule_data = request.state.session.get(
+        "schedule_data", schedule_service.get_empty_schedule_data()
+    )
+
+    # --- INICIO DE LA CORRECCIÓN ---
+    # Comprobar si la sesión de invitado tiene datos reales (más que una lista vacía)
+    has_guest_data = bool(guest_schedule_data.get("all_rows"))
+    # --- FIN DE LA CORRECCIÓN ---
+
     user = await auth.authenticate_user(db, username, password)
 
     if not user:
         # Mensaje idéntico para usuario existente o no existente
         return RedirectResponse(url="/login?result=auth", status_code=303)
+
+    # --- INICIO DE LA CORRECCIÓN ---
+    # Lógica de sobrescritura CONDICIONAL
+
+    schedule_for_new_session = {}
+
+    if has_guest_data:
+        # CASO 1: El invitado SÍ tenía datos. Sobrescribir la BD.
+        # Esto es para la conversión de "invitado a usuario".
+        await auth.save_schedule_to_db(db, user.id, guest_schedule_data)
+        schedule_for_new_session = guest_schedule_data
+    else:
+        # CASO 2: El invitado NO tenía datos (sesión expirada o vacía).
+        # NO sobrescribir la BD. En su lugar, cargar los datos de la BD
+        # para ponerlos en la nueva sesión.
+        existing_schedule = await auth.get_schedule_from_db(db, user.id)
+        if existing_schedule:
+            schedule_for_new_session = existing_schedule
+        else:
+            schedule_for_new_session = schedule_service.get_empty_schedule_data()
+    # --- FIN DE LA CORRECCIÓN ---
 
     # ¡Login exitoso! Rotación de sesión por seguridad
     old_session_id = request.state.session_id
@@ -144,10 +175,9 @@ async def login_post(
     # Establecer nueva sesión
     request.state.session["user_id"] = user.id
     request.state.session["is_authenticated"] = True
-    request.state.session["schedule_data"] = {
-        "processed_files": [],
-        "all_rows": [],
-    }
+
+    # 3. Poblar la nueva sesión con los datos correctos
+    request.state.session["schedule_data"] = schedule_for_new_session
 
     # Convertir el modelo de BD a Pydantic
     request.state.user = auth.User.model_validate(user)
@@ -156,11 +186,26 @@ async def login_post(
     # Marcar sesión anterior para limpieza
     request.state.old_session_id = old_session_id
 
-    return RedirectResponse(url="/profile", status_code=303)
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.get("/logout", response_class=RedirectResponse)
-async def logout(request: Request):
+async def logout(request: Request, db: AsyncSession = Depends(get_db)):  # <-- Añadir db
+
+    # --- INICIO DE LA CORRECCIÓN ---
+    # Guardar el estado final del schedule ANTES de cerrar sesión
+    if request.state.is_authenticated and request.state.user:
+        current_schedule_data = request.state.session.get("schedule_data")
+        if current_schedule_data:
+            try:
+                await auth.save_schedule_to_db(
+                    db, request.state.user.id, current_schedule_data
+                )
+            except Exception as e:
+                # main.py usa 'print' para los logs
+                print(f"Error guardando schedule en BD durante logout: {e}")
+    # --- FIN DE LA CORRECCIÓN ---
+
     # Marcamos al usuario como no autenticado
     request.state.session["user_id"] = None
     request.state.session["is_authenticated"] = False
@@ -337,6 +382,7 @@ async def generate_schedule(
     request: Request,
     files: List[UploadFile] = File(...),
     is_csrf_valid: bool = Depends(security.validate_csrf),
+    db: AsyncSession = Depends(get_db),
 ):
     schedule_data = request.state.session.get(
         "schedule_data", schedule_service.get_empty_schedule_data()
@@ -380,6 +426,12 @@ async def generate_schedule(
     request.state.session["schedule_data"] = schedule_data
     request.state.session["upload_errors"] = upload_errors
 
+    if request.state.is_authenticated and request.state.user:
+        try:
+            await auth.save_schedule_to_db(db, request.state.user.id, schedule_data)
+        except Exception as e:
+            print(f"Error guardando schedule en BD tras subida: {e}")
+
     return RedirectResponse(url="/generate-schedule", status_code=303)
 
 
@@ -411,10 +463,13 @@ async def show_upload_form(request: Request):
 async def delete_selected_rows(
     request: Request,
     selected_ids: str = Form(...),
-    # Cambiamos 'is_csrf_valid' por 'new_csrf_token' para más claridad
-    # El valor de 'new_csrf_token' será el nuevo token generado
     new_csrf_token: str = Depends(security.validate_csrf),
+    db: AsyncSession = Depends(get_db),  # <-- AÑADIDO
 ):
+    """
+    Elimina (marca) filas seleccionadas.
+    Guarda el cambio en la BD si el usuario está logueado.
+    """
     # Validar y filtrar UUIDs
     ids_to_delete = security.validate_uuid_list(selected_ids)
 
@@ -424,7 +479,7 @@ async def delete_selected_rows(
         )
 
     schedule_data = request.state.session.get(
-        "schedule_data", schedule_service.get_empty_schedule_data()
+        "schedule_data", schedule_service.get_empty_schedule_data()  #
     )
     all_rows = schedule_data.get("all_rows", [])
 
@@ -434,19 +489,31 @@ async def delete_selected_rows(
     )
 
     # Lógica de sesión restante
-    if not schedule_service.filter_active_rows(all_rows):
+    if not schedule_service.filter_active_rows(all_rows):  #
         schedule_data["processed_files"] = []
 
     schedule_data["all_rows"] = all_rows
-    request.state.session["schedule_data"] = schedule_data
+    request.state.session["schedule_data"] = schedule_data  #
 
-    # ¡LA CORRECCIÓN!
-    # Devolver el nuevo token en la respuesta JSON
+    # --- INICIO DE LA SOLUCIÓN ---
+    # Persistir el cambio en la BD si el usuario está logueado
+    if request.state.is_authenticated and request.state.user:
+        try:
+            await auth.save_schedule_to_db(db, request.state.user.id, schedule_data)  #
+        except Exception as e:
+            print(f"Error guardando schedule en BD tras borrado: {e}")
+            # Devolver error en JSON si falla el guardado
+            return JSONResponse(
+                {"success": False, "message": "Error al guardar en BD."},
+                status_code=500,
+            )
+    # --- FIN DE LA SOLUCIÓN ---
+
     return JSONResponse(
         {
             "success": True,
             "message": f"Deleted {deleted_count} rows.",
-            "new_csrf_token": new_csrf_token,
+            "new_csrf_token": new_csrf_token,  #
         }
     )
 
@@ -455,28 +522,51 @@ async def delete_selected_rows(
 @security.limiter.limit("30/minute")
 async def restore_deleted_rows(
     request: Request,
-    new_csrf_token: str = Depends(security.validate_csrf),  # Aplicar cambio
+    new_csrf_token: str = Depends(security.validate_csrf),
+    db: AsyncSession = Depends(get_db),  # <-- AÑADIDO
 ):
+    """
+    Restaura todas las filas borradas.
+    Guarda el cambio en la BD si el usuario está logueado.
+    """
     schedule_data = request.state.session.get(
-        "schedule_data", schedule_service.get_empty_schedule_data()
+        "schedule_data", schedule_service.get_empty_schedule_data()  #
     )
     all_rows = schedule_data.get("all_rows", [])
 
     if not all_rows:
-        return JSONResponse({"success": True, "message": "No data to restore."})
+        return JSONResponse(
+            {
+                "success": True,
+                "message": "No data to restore.",
+                "new_csrf_token": new_csrf_token,  #
+            }
+        )
 
     # Usar el servicio para la lógica de restauración
     all_rows, restored_count = schedule_service.restore_deleted_rows(all_rows)
 
     schedule_data["all_rows"] = all_rows
-    request.state.session["schedule_data"] = schedule_data
+    request.state.session["schedule_data"] = schedule_data  #
 
-    # ¡LA CORRECCIÓN!
+    # --- INICIO DE LA SOLUCIÓN ---
+    # Persistir el cambio en la BD si el usuario está logueado
+    if request.state.is_authenticated and request.state.user:
+        try:
+            await auth.save_schedule_to_db(db, request.state.user.id, schedule_data)  #
+        except Exception as e:
+            print(f"Error guardando schedule en BD tras restaurar: {e}")
+            return JSONResponse(
+                {"success": False, "message": "Error al guardar en BD."},
+                status_code=500,
+            )
+    # --- FIN DE LA SOLUCIÓN ---
+
     return JSONResponse(
         {
             "success": True,
             "message": f"Restored {restored_count} rows.",
-            "new_csrf_token": new_csrf_token,  # Devolver nuevo token
+            "new_csrf_token": new_csrf_token,
         }
     )
 
@@ -485,16 +575,37 @@ async def restore_deleted_rows(
 @security.limiter.limit("10/minute")
 async def delete_data(
     request: Request,
-    new_csrf_token: str = Depends(security.validate_csrf),  # Aplicar cambio
+    new_csrf_token: str = Depends(security.validate_csrf),
+    db: AsyncSession = Depends(get_db),  # <-- AÑADIDO
 ):
+    """
+    Limpia todos los datos del horario actual.
+    Guarda este estado vacío en la BD si el usuario está logueado.
+    """
     # Usar el servicio para obtener un estado vacío
-    request.state.session["schedule_data"] = schedule_service.get_empty_schedule_data()
+    empty_schedule_data = schedule_service.get_empty_schedule_data()
+    request.state.session["schedule_data"] = empty_schedule_data  #
+
+    # --- INICIO DE LA SOLUCIÓN ---
+    # Persistir el estado vacío en la BD si el usuario está logueado
+    if request.state.is_authenticated and request.state.user:
+        try:
+            await auth.save_schedule_to_db(  #
+                db, request.state.user.id, empty_schedule_data
+            )
+        except Exception as e:
+            print(f"Error guardando schedule en BD tras limpiar datos: {e}")
+            return JSONResponse(
+                {"success": False, "message": "Error al guardar en BD."},
+                status_code=500,
+            )
+    # --- FIN DE LA SOLUCIÓN ---
 
     return JSONResponse(
         {
             "success": True,
             "message": "All data cleared.",
-            "new_csrf_token": new_csrf_token,  # Devolver nuevo token
+            "new_csrf_token": new_csrf_token,  #
         }
     )
 

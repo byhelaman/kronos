@@ -1,4 +1,3 @@
-# session_middleware.py
 import json
 import uuid
 import redis.asyncio as redis
@@ -10,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 
 from config import REDIS_URL, SESSION_COOKIE_NAME
 import auth
+import schedule_service
 from database import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
@@ -45,12 +45,10 @@ class RedisSessionMiddleware(BaseHTTPMiddleware):
         if not session_id:
             new_session = True
             session_id = str(uuid.uuid4())
-            # Estado inicial de la sesión
+            # Estado inicial de la sesión (para invitados)
             session_data = {
-                "schedule_data": {
-                    "processed_files": [],
-                    "all_rows": [],
-                },
+                # Usar el servicio para el estado inicial
+                "schedule_data": schedule_service.get_empty_schedule_data(),
                 "user_id": None,
                 "is_authenticated": False,
             }
@@ -85,6 +83,21 @@ class RedisSessionMiddleware(BaseHTTPMiddleware):
                         request.state.user = auth.User.model_validate(user_db_model)
                         request.state.is_authenticated = True
                         logger.debug(f"Usuario autenticado: {user_db_model.username}")
+
+                        # --- INICIO: LÓGICA DE CARGA DE HORARIO ---
+                        # Cargar el horario AUTORITATIVO desde la BD
+                        db_schedule = await auth.get_schedule_from_db(
+                            db_session, user_db_model.id
+                        )
+                        if db_schedule:
+                            session_data["schedule_data"] = db_schedule
+                        else:
+                            # El usuario está logueado pero no tiene horario guardado
+                            session_data["schedule_data"] = (
+                                schedule_service.get_empty_schedule_data()
+                            )
+                        # --- FIN: LÓGICA DE CARGA DE HORARIO ---
+
                     else:
                         # Usuario no existe o inactivo, limpiar sesión
                         session_data["user_id"] = None
@@ -93,12 +106,29 @@ class RedisSessionMiddleware(BaseHTTPMiddleware):
                             f"Usuario inactivo o no encontrado: {session_user_id}"
                         )
 
+                        # Mantener los datos del horario de la sesión (ahora es un invitado)
+                        if "schedule_data" not in session_data:
+                            session_data["schedule_data"] = (
+                                schedule_service.get_empty_schedule_data()
+                            )
+
             except Exception as e:
                 logger.error(f"Error de BD al buscar usuario {session_user_id}: {e}")
                 session_data["user_id"] = None
                 session_data["is_authenticated"] = False
                 request.state.user = None
                 request.state.is_authenticated = False
+
+                if "schedule_data" not in session_data:
+                    session_data["schedule_data"] = (
+                        schedule_service.get_empty_schedule_data()
+                    )
+        else:
+            # Es un invitado, asegurarse que tenga una estructura de horario
+            if "schedule_data" not in session_data:
+                session_data["schedule_data"] = (
+                    schedule_service.get_empty_schedule_data()
+                )
 
         # Inyección global para templates
         if self.templates:

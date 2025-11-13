@@ -5,6 +5,7 @@
 {% include "header.html" %}
 
 <div class="login-container">
+    <h4 class="mb-4">Sign in</h4>
     <form class="login-form" action="/login" method="POST">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 
@@ -35,27 +36,34 @@
             </div>
         </div>
 
-        <button type="submit" class="btn btn--primary">
-            <span>Iniciar Sesión</span>
+        <button id="login-btn" type="submit" class="btn btn--primary">
+            <span class="btn-text">Sign in</span>
+            <span class="btn-loader">Sign in {{ icons.LoaderIcon(16) }}</span>
         </button>
     </form>
-
 </div>
+
+{% include "social.html" %}
 
 <style>
     .login-container {
         max-width: 23rem;
-        /* margin: 2rem auto; */
-        padding: 1.5rem;
-        background: var(--color-background-secondary);
-        border-radius: var(--border-radius-lg);
-        border: 1px solid var(--color-border);
+    }
+
+    .login-container h4 {
+        font-size: 1.25rem;
+        color: var(--color-text-primary);
     }
 
     .login-form {
         /* display: flex; */
         flex-direction: column;
         gap: 1.25rem;
+
+        padding: 1.5rem;
+        background: var(--color-background-secondary);
+        border-radius: var(--border-radius-lg);
+        border: 1px solid var(--color-border);
     }
 
     .form-group {
@@ -124,5 +132,35 @@
         margin-bottom: 1.5rem;
     }
 </style>
+<script>
+    const loginForm = document.querySelector(".login-form");
+    const loginBtn = document.getElementById("login-btn");
+
+    if (loginForm && loginBtn) {
+        loginForm.addEventListener("submit", (e) => {
+            // Si el formulario no es válido (campos vacíos), el navegador 
+            // prevendrá el envío antes de llegar aquí, así que no necesitamos
+            // validar manualmente con checkValidity() si usamos atributos 'required'.
+
+            // Prevenir doble clic
+            if (loginBtn.disabled) {
+                e.preventDefault();
+                return;
+            }
+
+            // Aplicar estado de carga y deshabilitar
+            loginBtn.disabled = true;
+            loginBtn.classList.add("is-loading");
+        });
+    }
+
+    // Restaurar estado del botón si la página se carga desde la caché (botón Atrás)
+    window.addEventListener("pageshow", function (event) {
+        if (loginBtn) {
+            loginBtn.classList.remove("is-loading");
+            loginBtn.disabled = false;
+        }
+    });
+</script>
 
 {% endblock %}

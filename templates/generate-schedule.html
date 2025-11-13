@@ -10,28 +10,34 @@ upload_errors|length > 0 %}
   </ul>
 </div>
 {% endif %} {% if data %} {% include "dashboard.html" %} {% else %}
-<form class="upload-form" action="/generate-schedule" method="POST" enctype="multipart/form-data">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-  <label for="file-upload" class="upload-zone">
-    <span class="upload-icon"> {{ icons.CloudUploadIcon(32) }} </span>
-    <span class="upload-text">Upload files</span>
+<div class="upload-container">
+  <form class="upload-form" action="/generate-schedule" method="POST" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label for="file-upload" class="upload-zone">
+      <span class="upload-icon"> {{ icons.UploadIcon(32) }} </span>
 
-    <input id="file-upload" name="files" type="file" multiple class="upload-zone-input" accept=".xls,.xlsx" />
-  </label>
+      <div class=" upload-text-container">
+        <span class="upload-text">Drag & Drop or <span class="hl ">Choose files</span> to upload</span>
+        <span class="upload-text-drag">.xls, .xlsx</span>
+      </div>
 
-  <div id="file-error-message" class="file-error"></div>
-  <div id="file-list-container"></div>
+      <input id="file-upload" name="files" type="file" multiple class="upload-zone-input" accept=".xls,.xlsx" />
+    </label>
 
-  <div class="upload-form-actions">
-    {% if show_cancel %}
-    <a href="/generate-schedule" class="btn btn--secondary">Cancel</a>
-    {% endif %}
-    <button id="process-btn" type="submit" class="btn btn--primary" disabled>
-      <span class="btn-text"> Process {{ icons.SendIcon(16) }} </span>
-      <span class="btn-loader"> Process {{ icons.LoaderIcon(16) }} </span>
-    </button>
-  </div>
-</form>
+    <div id="file-error-message" class="file-error"></div>
+    <div id="file-list-container"></div>
+
+    <div class="upload-form-actions">
+      {% if show_cancel %}
+      <a href="/generate-schedule" class="btn btn--secondary">Cancel</a>
+      {% endif %}
+      <button id="process-btn" type="submit" class="btn btn--primary" disabled>
+        <span class="btn-text"> Process {{ icons.SendIcon(16) }} </span>
+        <span class="btn-loader"> Process {{ icons.LoaderIcon(16) }} </span>
+      </button>
+    </div>
+  </form>
+</div>
 
 {% endif %} {% if data %}
 <script type="module">
@@ -47,11 +53,12 @@ upload_errors|length > 0 %}
   const fileIconHtml = `{{ icons.FileIcon(16) }}`;
   const trashIconHtml = `{{ icons.TrashIcon(16) }}`;
 
-  const fileInput = document.getElementById("file-upload");
+  let fileInput = document.getElementById("file-upload");
   const listContainer = document.getElementById("file-list-container");
   const uploadForm = document.querySelector(".upload-form");
   const processButton = document.getElementById("process-btn");
   const errorMessageEl = document.getElementById("file-error-message");
+  const uploadZone = document.querySelector(".upload-zone");
 
   listContainer.style.display = "none";
   errorMessageEl.style.display = "none";
@@ -61,6 +68,17 @@ upload_errors|length > 0 %}
   const ALLOWED_EXTENSIONS = [".xls", ".xlsx"];
 
   let fileStore = new DataTransfer();
+
+  // Función para deshabilitar/habilitar elementos de carga
+  function setUploadDisabled(disabled) {
+    if (disabled) {
+      uploadZone.classList.add("disabled");
+      // fileInput.disabled = true;
+    } else {
+      uploadZone.classList.remove("disabled");
+      // fileInput.disabled = false;
+    }
+  }
 
   function formatBytes(bytes, decimals = 2) {
     if (bytes === 0) return "0 Bytes";
@@ -153,73 +171,167 @@ upload_errors|length > 0 %}
     });
 
     fileStore = newStore;
-    fileInput.files = fileStore.files;
+    updateFileInput();
     renderFileList();
   }
 
-  fileInput.addEventListener("change", () => {
+  // Funcionalidad de Drag & Drop
+  if (uploadZone) {
+    // Prevenir el comportamiento por defecto para los eventos de drag
+    ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
+      uploadZone.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    // Resaltar la zona de drop cuando un archivo está sobre ella
+    ["dragenter", "dragover"].forEach((eventName) => {
+      uploadZone.addEventListener(eventName, highlight, false);
+    });
+
+    ["dragleave", "drop"].forEach((eventName) => {
+      uploadZone.addEventListener(eventName, unhighlight, false);
+    });
+
+    function highlight() {
+      uploadZone.classList.add("highlight");
+    }
+
+    function unhighlight() {
+      uploadZone.classList.remove("highlight");
+    }
+
+    uploadZone.addEventListener("drop", function handleDrop(e) {
+      const dt = e.dataTransfer;
+      const files = dt.files;
+
+      const newStore = new DataTransfer();
+      Array.from(files).forEach(file => {
+        newStore.items.add(file);
+      });
+
+      fileStore = newStore;
+      validateAndRenderFiles();
+    }, false);
+  }
+
+  function validateAndRenderFiles() {
     clearError();
+
+    const files = Array.from(fileStore.files);
+
+    if (files.length === 0) {
+      // FIX 1: Llamar a updateFileInput para limpiar el input
+      updateFileInput();
+      renderFileList();
+      return;
+    }
+
+    // Validar cantidad máxima de archivos
+    if (files.length > MAX_FILES) {
+      showError(`You can only upload a maximum of ${MAX_FILES} files.`);
+      const newStore = new DataTransfer();
+      files.slice(0, MAX_FILES).forEach(file => {
+        newStore.items.add(file);
+      });
+      fileStore = newStore;
+      updateFileInput();
+      renderFileList();
+      return;
+    }
+
+    // Validar tamaño total
+    const totalSize = files.reduce((acc, file) => acc + file.size, 0);
+    if (totalSize > MAX_TOTAL_SIZE) {
+      showError(`Total file size cannot exceed ${formatBytes(MAX_TOTAL_SIZE, 0)}.`);
+
+      // FIX 2: Resetear el store y el input a un estado vacío y válido
+      fileStore = new DataTransfer();
+      updateFileInput();
+      renderFileList();
+
+      return;
+    }
+
+    /// Validar extensiones y filtrar archivos inválidos
+    const validFiles = [];
+    const invalidFiles = [];
+
+    files.forEach(file => {
+      const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+      if (ALLOWED_EXTENSIONS.includes(ext)) {
+        validFiles.push(file);
+      } else {
+        invalidFiles.push(file.name);
+      }
+    });
+
+    // Mostrar error si hay archivos inválidos
+    if (invalidFiles.length > 0) {
+      showError(`Invalid file type${invalidFiles.length > 1 ? 's' : ''}: ${invalidFiles.join(', ')}. Only .xls and .xlsx are allowed.`);
+    }
+
+
+    // Actualizar store solo con archivos válidos
+    const newStore = new DataTransfer();
+    validFiles.forEach(file => {
+      newStore.items.add(file);
+    });
+
+    fileStore = newStore;
+    updateFileInput();
+    renderFileList();
+  }
+
+  // Función auxiliar para actualizar el input file
+  function updateFileInput() {
+    // Crear un nuevo input file temporal
+    const newInput = document.createElement('input');
+    newInput.type = 'file';
+    newInput.name = 'files';
+    newInput.multiple = true;
+
+    // Transferir los archivos al nuevo input
+    const dataTransfer = new DataTransfer();
+    Array.from(fileStore.files).forEach(file => {
+      dataTransfer.items.add(file);
+    });
+    newInput.files = dataTransfer.files;
+
+    // Reemplazar el input original con el nuevo
+    const oldInput = document.getElementById('file-upload');
+    oldInput.parentNode.replaceChild(newInput, oldInput);
+    newInput.id = 'file-upload';
+    newInput.className = 'upload-zone-input';
+    newInput.accept = '.xls,.xlsx';
+    newInput.style.display = 'none';
+
+    // Actualizar la referencia global
+    fileInput = newInput;
+
+    // Re-attach event listener
+    fileInput.addEventListener('change', handleFileInputChange);
+  }
+
+  // Handler para el input file
+  function handleFileInputChange() {
     const newFiles = Array.from(fileInput.files);
 
-    fileInput.value = "";
+    const newStore = new DataTransfer();
+    newFiles.forEach(file => {
+      newStore.items.add(file);
+    });
 
-    let currentTotalSize = Array.from(fileStore.files).reduce(
-      (acc, f) => acc + f.size,
-      0
-    );
+    fileStore = newStore;
+    updateFileInput();
+    validateAndRenderFiles();
+  }
 
-    const existingFileNames = new Set(
-      Array.from(fileStore.files).map((f) => f.name)
-    );
-
-    if (fileStore.files.length + newFiles.length > MAX_FILES) {
-      showError(`You can only upload a maximum of ${MAX_FILES} files.`);
-      fileInput.files = fileStore.files;
-      return;
-    }
-
-    let validNewFiles = [];
-    let newFilesSize = 0;
-
-    for (const file of newFiles) {
-      const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
-
-      if (!ALLOWED_EXTENSIONS.includes(ext)) {
-        showError(
-          `Invalid file type: ${file.name}. Only .xls and .xlsx are allowed.`
-        );
-        fileInput.files = fileStore.files;
-        return;
-      }
-
-      if (existingFileNames.has(file.name)) {
-        showError(`File already added: "${file.name}"`);
-        fileInput.files = fileStore.files;
-        return;
-      }
-
-      newFilesSize += file.size;
-      validNewFiles.push(file);
-
-      existingFileNames.add(file.name);
-    }
-
-    if (currentTotalSize + newFilesSize > MAX_TOTAL_SIZE) {
-      showError(
-        `Total file size cannot exceed ${formatBytes(MAX_TOTAL_SIZE, 0)}.`
-      );
-      fileInput.files = fileStore.files;
-      return;
-    }
-
-    for (const file of validNewFiles) {
-      fileStore.items.add(file);
-    }
-
-    fileInput.files = fileStore.files;
-
-    renderFileList();
-  });
+  // Inicializar event listener
+  fileInput.addEventListener('change', handleFileInputChange);
 
   if (uploadForm && processButton) {
     uploadForm.addEventListener("submit", (e) => {
@@ -228,8 +340,21 @@ upload_errors|length > 0 %}
         return;
       }
 
+      // Verificar que hay archivos válidos antes de enviar
+      const validFiles = Array.from(fileStore.files).filter(file => {
+        const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+        return ALLOWED_EXTENSIONS.includes(ext);
+      });
+
+      if (validFiles.length === 0) {
+        e.preventDefault();
+        showError("Please select valid Excel files (.xls, .xlsx) to process.");
+        return;
+      }
+
       processButton.disabled = true;
       processButton.classList.add("is-loading");
+      setUploadDisabled(true);
 
       document.querySelectorAll(".remove-file-btn").forEach((btn) => {
         btn.disabled = true;
@@ -240,6 +365,7 @@ upload_errors|length > 0 %}
   window.addEventListener("pageshow", function (event) {
     if (processButton) {
       processButton.classList.remove("is-loading");
+      setUploadDisabled(false);
 
       if (fileStore.files.length === 0) {
         processButton.disabled = true;
@@ -252,5 +378,44 @@ upload_errors|length > 0 %}
     });
   });
 </script>
+
+<style>
+  .upload-container {
+    max-width: 24rem;
+  }
+
+  .upload-zone {
+    transition: all 0.3s ease;
+  }
+
+  .upload-zone.highlight {
+    background-color: var(--color-hover-upload);
+  }
+
+  .upload-zone.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  .upload-text-container {
+    text-align: center;
+
+  }
+
+  .upload-text {
+    color: var(--color-text-primary);
+  }
+
+  .upload-text .hl {
+    color: var(--color-border-upload);
+    font-weight: 500;
+  }
+
+  .upload-text-drag {
+    display: block;
+    font-size: 14px;
+    color: #666;
+  }
+</style>
 
 {% endblock %}
