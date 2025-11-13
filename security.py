@@ -7,7 +7,40 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from passlib.context import CryptContext
 
+from cryptography.fernet import Fernet, InvalidToken
+import config
+
+__all__ = ["InvalidToken"]
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+try:
+    cipher_suite = Fernet(config.ENCRYPTION_KEY.encode())
+except Exception as e:
+    raise RuntimeError(f"Error al inicializar el cifrador Fernet: {e}")
+
+
+def encrypt_token(token: str) -> str:
+    """Cifra un token de texto plano a un string cifrado."""
+    if not token:
+        return ""
+    encrypted_bytes = cipher_suite.encrypt(token.encode())
+    return encrypted_bytes.decode()
+
+
+def decrypt_token(encrypted_token: str) -> str:
+    """Descifra un token cifrado de vuelta a texto plano."""
+    if not encrypted_token:
+        raise InvalidToken("El token cifrado está vacío.")
+
+    try:
+        decrypted_bytes = cipher_suite.decrypt(encrypted_token.encode())
+        return decrypted_bytes.decode()
+    except InvalidToken as e:
+        print(f"Error de descifrado: {e}")
+        # Re-lanzar para que la función que llama lo maneje
+        raise e
+
 
 # --- Patrón de validación de UUID ---
 UUID_PATTERN = re.compile(

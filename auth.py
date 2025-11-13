@@ -8,7 +8,7 @@ from sqlalchemy.future import select
 from database import get_db
 import db_models
 import security
-import schedule_service
+from security import InvalidToken
 
 
 # --- Modelo de Usuario ---
@@ -65,14 +65,40 @@ async def save_zoom_tokens_for_user(
     user = await db.get(db_models.User, user_id)
     if user:
         user.zoom_user_id = zoom_user_id
-        user.zoom_access_token = access_token
-        user.zoom_refresh_token = refresh_token
+
+        user.zoom_access_token = security.encrypt_token(access_token)
+        user.zoom_refresh_token = security.encrypt_token(refresh_token)
+
         db.add(user)
         await db.commit()
         await db.refresh(user)
 
 
-# --- NUEVAS FUNCIONES DE GESTIÓN DE HORARIOS ---
+async def get_decrypted_zoom_tokens(
+    db: AsyncSession, user_id: str
+) -> Optional[Dict[str, str]]:
+    """
+    Recupera y descifra los tokens de Zoom para un usuario.
+    Esta función sería usada antes de hacer una llamada a la API de Zoom.
+    """
+    user = await db.get(db_models.User, user_id)
+
+    if not user or not user.zoom_access_token or not user.zoom_refresh_token:
+        # El usuario no existe o no tiene tokens vinculados
+        return None
+
+    try:
+        access_token = security.decrypt_token(user.zoom_access_token)
+        refresh_token = security.decrypt_token(user.zoom_refresh_token)
+
+        return {"access_token": access_token, "refresh_token": refresh_token}
+
+    except InvalidToken:
+        # Esto puede ocurrir si la ENCRYPTION_KEY cambió
+        # o si los datos en la BD están corruptos.
+        print(f"Error: No se pudieron descifrar los tokens para el user_id {user_id}.")
+        # Tratar como si no tuviera tokens válidos
+        return None
 
 
 async def get_schedule_from_db(
@@ -201,19 +227,14 @@ async def get_current_admin_user(
 async def remove_zoom_tokens_for_user(db: AsyncSession, user_id: str):
     """
     Elimina los tokens de Zoom y el zoom_user_id del usuario.
+    (Esta función ya estaba correcta, solo establece en None)
     """
-    # Buscamos al usuario por su ID (igual que en save_zoom_tokens_for_user)
     user = await db.get(db_models.User, user_id)
 
     if user:
-        # Establecemos los campos de Zoom a None (NULL en la base de datos)
         user.zoom_user_id = None
         user.zoom_access_token = None
         user.zoom_refresh_token = None
-
-        # Si tienes un campo 'zoom_token_expires_at' en db_models.py,
-        # descomenta la siguiente línea:
-        # user.zoom_token_expires_at = None
 
         # Guardamos los cambios
         db.add(user)

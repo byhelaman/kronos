@@ -27,6 +27,7 @@ werkzeug
 starlette
 
 passlib
+cryptography
 bcrypt==4.0.1
 sqlalchemy
 asyncpg

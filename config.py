@@ -2,20 +2,27 @@
 import os
 from dotenv import load_dotenv
 from collections import namedtuple
+import base64
 
 load_dotenv()
 
 # --- Configuración de la App ---
 REDIS_URL = os.getenv("REDIS_URL")
-if not REDIS_URL:
-    raise RuntimeError("Error en la configuración de Redis.")
-
 DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError("Error en la configuración de la base de datos.")
+ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
+
+# Validación básica sin exponer detalles sensibles
+if not all([REDIS_URL, DATABASE_URL, ENCRYPTION_KEY]):
+    raise RuntimeError("Error en la configuración del entorno.")
+
+try:
+    decoded_key = base64.urlsafe_b64decode(ENCRYPTION_KEY.encode())
+    if len(decoded_key) != 32:
+        raise ValueError
+except Exception:
+    raise TypeError("Clave de cifrado inválida.")
 
 SESSION_COOKIE_NAME = "file_session_id"
-
 
 ZOOM_CLIENT_ID = os.getenv("ZOOM_CLIENT_ID")
 ZOOM_CLIENT_SECRET = os.getenv("ZOOM_CLIENT_SECRET")

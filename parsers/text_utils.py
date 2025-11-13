@@ -58,7 +58,7 @@ def filter_special_tags(text: str) -> Optional[str]:
     Returns:
         None si el texto coincide con un tag especial; el texto original en caso contrario.
     """
-    
+
     # Normalizamos el texto: minúsculas y sin espacios
     normalized_text = re.sub(r"\s+", "", text.lower())
 
@@ -112,7 +112,7 @@ def extract_duration_or_keyword(text: str) -> Optional[str]:
 def format_time_periods(string: str) -> str:
     """
     Normaliza los indicadores AM/PM en una cadena de tiempo.
-    
+
     Reemplaza "a.m." por "AM" y "p.m." por "PM" para mantener consistencia.
 
     Args:
