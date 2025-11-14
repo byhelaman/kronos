@@ -1,762 +1,88 @@
-# main.py
-import asyncio
-from fastapi import (
-    FastAPI,
-    Request,
-    UploadFile,
-    File,
-    Form,
-    Depends,
-    HTTPException,
-    status,
-)
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.middleware.gzip import GZipMiddleware
-from fastapi.responses import (
-    HTMLResponse,
-    RedirectResponse,
-    JSONResponse,
-)
-import uuid
-from sqlalchemy.future import select
+"""
+Punto de entrada principal de la aplicación FastAPI.
 
+Este módulo configura e inicializa la aplicación FastAPI, incluyendo:
+- Configuración de middleware (seguridad, compresión, rate limiting)
+- Gestión del ciclo de vida de la base de datos
+- Registro de routers para diferentes funcionalidades
+- Configuración de archivos estáticos y plantillas
+"""
+from fastapi import FastAPI
+from starlette.middleware.gzip import GZipMiddleware
+from slowapi.errors import RateLimitExceeded
+from contextlib import asynccontextmanager
+
+from database import engine, Base
+from middleware.security_headers import SecurityHeadersMiddleware
+from session_middleware import RedisSessionMiddleware
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from slowapi.errors import RateLimitExceeded
-from typing import List, Dict, Any, Optional
-
-from database import get_db
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from database import engine, AsyncSessionLocal, Base
-import db_models
-from security import get_password_hash
-
-import config
 import security
-import schedule_service
-import file_processing
-from contextlib import asynccontextmanager
-import response_generators
-import auth
-import zoom_oauth
-from auth import User
-from database import engine, Base
 
-from session_middleware import RedisSessionMiddleware
+# Importar routers por dominio funcional
+from routers import auth, schedule, admin, zoom
 
 
-# --- Middleware de Headers de Seguridad ---
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        # Headers de seguridad esenciales
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains"
-        )
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-            "font-src 'self' https://fonts.gstatic.com; "
-            "connect-src 'self'; "
-            "form-action 'self'; "
-            "base-uri 'self'; "
-            "frame-ancestors 'none';"
-        )
-        return response
-
-
-# --- NUEVO: Lifespan para la Base de Datos ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Gestiona la conexión de la base de datos durante el ciclo de vida de la app.
+    Gestiona el ciclo de vida de la aplicación y la conexión a la base de datos.
+    
+    Esta función se ejecuta al iniciar y detener la aplicación:
+    - Al iniciar: Crea las tablas de la base de datos si no existen
+    - Durante la ejecución: Mantiene el pool de conexiones activo
+    - Al detener: Cierra todas las conexiones de forma segura
+    
+    Args:
+        app: Instancia de la aplicación FastAPI
+        
+    Yields:
+        Control al contexto de ejecución de la aplicación
     """
-    print("Iniciando pool de conexión...")
+    print("Iniciando pool de conexión a la base de datos...")
     async with engine.begin() as conn:
-        # En un entorno de desarrollo, puedes crear las tablas aquí.
-        # En producción, deberías usar Alembic (ver Paso 10).
-        # await conn.run_sync(Base.metadata.drop_all) # Borra todo (cuidado)
+        # Nota: En producción, usar Alembic para migraciones en lugar de create_all
+        # await conn.run_sync(Base.metadata.drop_all)  # Solo para desarrollo/reset
         await conn.run_sync(Base.metadata.create_all)
-        print("Tablas creadas (si no existían).")
+        print("Tablas de base de datos verificadas/creadas correctamente.")
 
-    yield  # Aquí es donde la aplicación se ejecuta
+    # La aplicación se ejecuta aquí
+    yield
 
-    print("Cerrando pool de conexión...")
-    await engine.dispose()  # Cierra las conexiones al apagar
+    print("Cerrando pool de conexión a la base de datos...")
+    await engine.dispose()
 
 
-# app = FastAPI()
+# ============================================================================
+# CONFIGURACIÓN DE LA APLICACIÓN FASTAPI
+# ============================================================================
+
 app = FastAPI(lifespan=lifespan)
+
+# Middleware de compresión GZip para respuestas grandes (>1KB)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Middleware de headers de seguridad HTTP (CSP, XSS, etc.)
 app.add_middleware(SecurityHeadersMiddleware)
 
-# Configuración de Rate Limiter
+# Configuración de rate limiting para prevenir abuso
 app.state.limiter = security.limiter
 app.add_exception_handler(RateLimitExceeded, security.rate_limit_handler)
 
-# Montar archivos estáticos y plantillas
+# Montar directorio de archivos estáticos (CSS, JS, imágenes)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Configuración de templates Jinja2 (aunque se usa principalmente en middleware)
 templates = Jinja2Templates(directory="templates")
 
+# Middleware de gestión de sesiones con Redis
 app.add_middleware(RedisSessionMiddleware, templates=templates)
 
-# --- Endpoints de Autenticación (NUEVOS) ---
-
-
-@app.get("/login", response_class=HTMLResponse)
-async def login_get(request: Request):
-    token = security.get_or_create_csrf_token(request.state.session)
-    # Asumimos que tienes una plantilla "login.html"
-    return templates.TemplateResponse(
-        "login.html", {"request": request, "csrf_token": token}
-    )
-
-
-@app.post("/login", response_class=RedirectResponse)
-@security.limiter.limit("5/minute")
-async def login_post(
-    request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-    db: AsyncSession = Depends(get_db),
-):
-    # 1. Capturar el schedule del invitado ANTES de rotar la sesión
-    guest_schedule_data = request.state.session.get(
-        "schedule_data", schedule_service.get_empty_schedule_data()
-    )
-
-    # --- INICIO DE LA CORRECCIÓN ---
-    # Comprobar si la sesión de invitado tiene datos reales (más que una lista vacía)
-    has_guest_data = bool(guest_schedule_data.get("all_rows"))
-    # --- FIN DE LA CORRECCIÓN ---
-
-    user = await auth.authenticate_user(db, username, password)
-
-    if not user:
-        # Mensaje idéntico para usuario existente o no existente
-        return RedirectResponse(url="/login?result=auth", status_code=303)
-
-    # --- INICIO DE LA CORRECCIÓN ---
-    # Lógica de sobrescritura CONDICIONAL
-
-    schedule_for_new_session = {}
-
-    if has_guest_data:
-        # CASO 1: El invitado SÍ tenía datos. Sobrescribir la BD.
-        # Esto es para la conversión de "invitado a usuario".
-        await auth.save_schedule_to_db(db, user.id, guest_schedule_data)
-        schedule_for_new_session = guest_schedule_data
-    else:
-        # CASO 2: El invitado NO tenía datos (sesión expirada o vacía).
-        # NO sobrescribir la BD. En su lugar, cargar los datos de la BD
-        # para ponerlos en la nueva sesión.
-        existing_schedule = await auth.get_schedule_from_db(db, user.id)
-        if existing_schedule:
-            schedule_for_new_session = existing_schedule
-        else:
-            schedule_for_new_session = schedule_service.get_empty_schedule_data()
-    # --- FIN DE LA CORRECCIÓN ---
-
-    # ¡Login exitoso! Rotación de sesión por seguridad
-    old_session_id = request.state.session_id
-
-    # Crear nueva sesión
-    new_session_id = str(uuid.uuid4())
-    request.state.session_id = new_session_id
-    request.state.session.clear()
-
-    # Establecer nueva sesión
-    request.state.session["user_id"] = user.id
-    request.state.session["is_authenticated"] = True
-
-    # 3. Poblar la nueva sesión con los datos correctos
-    request.state.session["schedule_data"] = schedule_for_new_session
-
-    # Convertir el modelo de BD a Pydantic
-    request.state.user = auth.User.model_validate(user)
-    request.state.is_authenticated = True
-
-    # Marcar sesión anterior para limpieza
-    request.state.old_session_id = old_session_id
-
-    return RedirectResponse(url="/", status_code=303)
-
-
-@app.get("/logout", response_class=RedirectResponse)
-async def logout(request: Request, db: AsyncSession = Depends(get_db)):  # <-- Añadir db
-
-    # --- INICIO DE LA CORRECCIÓN ---
-    # Guardar el estado final del schedule ANTES de cerrar sesión
-    if request.state.is_authenticated and request.state.user:
-        current_schedule_data = request.state.session.get("schedule_data")
-        if current_schedule_data:
-            try:
-                await auth.save_schedule_to_db(
-                    db, request.state.user.id, current_schedule_data
-                )
-            except Exception as e:
-                # main.py usa 'print' para los logs
-                print(f"Error guardando schedule en BD durante logout: {e}")
-    # --- FIN DE LA CORRECCIÓN ---
-
-    # Marcamos al usuario como no autenticado
-    request.state.session["user_id"] = None
-    request.state.session["is_authenticated"] = False
-    request.state.user = None
-    request.state.is_authenticated = False
-
-    # Opcional: Borrar toda la sesión de invitado también
-    request.state.session_cleared = True
-
-    return RedirectResponse(url="/", status_code=303)
-
-
-@app.get("/profile", response_class=HTMLResponse)
-async def user_profile(
-    request: Request, current_user: User = Depends(auth.get_current_active_user)
-):
-    """
-    Página de perfil del usuario.
-    Solo accesible para usuarios logueados (no invitados).
-    """
-    token = security.get_or_create_csrf_token(request.state.session)
-
-    # Comprobamos si el usuario (de nuestra BD simulada) ya tiene tokens
-    is_zoom_linked = bool(current_user.zoom_user_id)
-
-    # Asumimos que tienes "profile.html"
-    return templates.TemplateResponse(
-        "profile.html",
-        {
-            "request": request,
-            "csrf_token": token,
-            "user": current_user,
-            "is_zoom_linked": is_zoom_linked,
-        },
-    )
-
-
-# --- Endpoints de Vinculación de Zoom (NUEVOS) ---
-
-
-@app.get("/auth/zoom")
-async def zoom_auth_start(
-    request: Request, current_user: User = Depends(auth.get_current_active_user)
-):
-    """
-    Paso 1: Iniciar la vinculación.
-    """
-    if not config.ZOOM_CLIENT_ID:
-        raise HTTPException(500, "Zoom no está configurado en el servidor.")
-
-    # 1. Obtener AMBOS valores de la función
-    auth_url, code_verifier = zoom_oauth.get_zoom_auth_url()
-
-    # 2. Guardar el verifier en la sesión ANTES de redirigir
-    request.state.session["zoom_code_verifier"] = code_verifier
-
-    return RedirectResponse(url=auth_url)
-
-
-@app.post("/auth/zoom/unlink", response_class=RedirectResponse)
-async def zoom_unlink(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(auth.get_current_active_user),
-    is_csrf_valid: bool = Depends(security.validate_csrf),  # Validación CSRF importante
-):
-    """
-    Elimina los tokens de Zoom del usuario actual.
-    """
-    # Nota: Necesitarás agregar esta función 'remove_zoom_tokens_for_user' en tu archivo auth.py
-    # Si no la tienes, te dejo un ejemplo de cómo sería abajo en la explicación.
-    await auth.remove_zoom_tokens_for_user(db, current_user.id)
-
-    return RedirectResponse(url="/profile?success=zoom_unlinked", status_code=303)
-
-
-# 2. MODIFICAR el callback existente
-@app.get("/auth/zoom/callback")
-async def zoom_auth_callback(
-    request: Request,
-    code: str,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Callback modificado para manejar el cierre del popup.
-    """
-    # Verificamos autenticación (igual que antes)
-    if not request.state.is_authenticated or not request.state.user:
-        return RedirectResponse(url="/login?error=zoom_auth_failed", status_code=303)
-
-    current_user = request.state.user
-    code_verifier = request.state.session.pop("zoom_code_verifier", None)
-
-    if not code_verifier:
-        # Si falla, cerramos el popup y recargamos la principal con error
-        return HTMLResponse(
-            """
-            <script>
-                if (window.opener) {
-                    window.opener.location.href = '/profile?error=zoom_session_expired';
-                    window.close();
-                } else {
-                    window.location.href = '/profile?error=zoom_session_expired';
-                }
-            </script>
-            """
-        )
-
-    try:
-        token_data = await zoom_oauth.exchange_code_for_tokens(code, code_verifier)
-        access_token = token_data["access_token"]
-        refresh_token = token_data["refresh_token"]
-
-        zoom_user_info = await zoom_oauth.get_zoom_user_info(access_token)
-        zoom_user_id = zoom_user_info["id"]
-
-        await auth.save_zoom_tokens_for_user(
-            db=db,
-            user_id=current_user.id,
-            zoom_user_id=zoom_user_id,
-            access_token=access_token,
-            refresh_token=refresh_token,
-        )
-
-        # --- CAMBIO CRÍTICO AQUÍ ---
-        # No redirigimos con RedirectResponse. Devolvemos un script JS.
-        # Esto actualiza la ventana PADRE (opener) y cierra el POPUP.
-        return HTMLResponse(
-            """
-            <script>
-                if (window.opener) {
-                    // Recargar la ventana principal con el mensaje de éxito
-                    window.opener.location.href = '/profile?success=zoom_linked';
-                    // Cerrar este popup
-                    window.close();
-                } else {
-                    // Fallback por si el usuario abrió el link directo sin popup
-                    window.location.href = '/profile?success=zoom_linked';
-                }
-            </script>
-            """
-        )
-
-    except Exception as e:
-        print(f"Error en el callback de Zoom: {e}")
-        return HTMLResponse(
-            """
-            <script>
-                if (window.opener) {
-                    window.opener.location.href = '/profile?error=zoom_link_failed';
-                    window.close();
-                } else {
-                    window.location.href = '/profile?error=zoom_link_failed';
-                }
-            </script>
-            """
-        )
-
-
-# --- Endpoints de la Aplicación (Sin cambios, ahora conscientes del auth) ---
-
-
-@app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    token = security.get_or_create_csrf_token(request.state.session)
-    # Ya no pasamos 'is_authenticated' o 'user', el
-    # context processor global se encarga de eso.
-    return templates.TemplateResponse(
-        "index.html", {"request": request, "csrf_token": token}
-    )
-
-
-@app.get("/generate-schedule", response_class=HTMLResponse)
-async def read_schedule(request: Request):
-    """
-    Este endpoint sigue funcionando para INVITADOS y USUARIOS LOGUEADOS.
-    La lógica de 'schedule_data' está en la sesión de Redis,
-    que es independiente de si el usuario está logueado o no.
-    """
-    schedule_data = request.state.session.get(
-        "schedule_data", schedule_service.get_empty_schedule_data()
-    )
-    all_rows = schedule_data.get("all_rows", [])
-
-    data_to_render = schedule_service.filter_active_rows(all_rows)
-    num_deleted_rows = schedule_service.get_deleted_rows_count(all_rows)
-
-    token = security.get_or_create_csrf_token(request.state.session)
-    upload_errors = request.state.session.pop("upload_errors", [])
-
-    return templates.TemplateResponse(
-        "generate-schedule.html",
-        {
-            "request": request,
-            "title": "Generate Schedule",
-            "description": "Extract the schedule information",
-            "data": data_to_render,
-            "num_deleted": num_deleted_rows,
-            "csrf_token": token,
-            "upload_errors": upload_errors,
-        },
-    )
-
-
-@app.post("/generate-schedule", response_class=RedirectResponse)
-@security.limiter.limit("10/minute")
-async def generate_schedule(
-    request: Request,
-    files: List[UploadFile] = File(...),
-    is_csrf_valid: bool = Depends(security.validate_csrf),
-    db: AsyncSession = Depends(get_db),
-):
-    schedule_data = request.state.session.get(
-        "schedule_data", schedule_service.get_empty_schedule_data()
-    )
-    all_rows = schedule_data.get("all_rows", [])
-    processed_files_set = set(schedule_data.get("processed_files", []))
-
-    newly_processed_files = []
-    upload_errors = []
-
-    for file in files:
-        if file.filename in processed_files_set:
-            continue
-
-        content = await file.read()
-
-        # 1. Validar archivo (Lógica en file_processing)
-        error = file_processing.validate_file(file, content)
-        if error:
-            upload_errors.append(error)
-            continue
-
-        # 2. Parsear archivo (Lógica en file_processing)
-        try:
-            new_schedules = await file_processing.process_single_file(file, content)
-
-            # 3. Fusionar datos (Lógica en schedule_service)
-            all_rows = schedule_service.merge_new_schedules(all_rows, new_schedules)
-
-            newly_processed_files.append(file.filename)
-
-        except Exception as e:
-            print(f"Error processing file {file.filename}: {e}")
-            upload_errors.append(f"Error al procesar: {file.filename}")
-
-    # 4. Actualizar estado de la sesión
-    processed_files_set.update(newly_processed_files)
-    schedule_data["processed_files"] = list(processed_files_set)
-    schedule_data["all_rows"] = all_rows
-
-    request.state.session["schedule_data"] = schedule_data
-    request.state.session["upload_errors"] = upload_errors
-
-    if request.state.is_authenticated and request.state.user:
-        try:
-            await auth.save_schedule_to_db(db, request.state.user.id, schedule_data)
-        except Exception as e:
-            print(f"Error guardando schedule en BD tras subida: {e}")
-
-    return RedirectResponse(url="/generate-schedule", status_code=303)
-
-
-@app.get("/upload-new", response_class=HTMLResponse)
-async def show_upload_form(request: Request):
-    schedule_data = request.state.session.get(
-        "schedule_data", schedule_service.get_empty_schedule_data()
-    )
-    schedule_data["processed_files"] = []
-    request.state.session["schedule_data"] = schedule_data
-
-    token = security.get_or_create_csrf_token(request.state.session)
-
-    return templates.TemplateResponse(
-        "generate-schedule.html",
-        {
-            "request": request,
-            "title": "Upload New Files",
-            "description": "Add new files to the existing schedule",
-            "data": None,
-            "show_cancel": True,
-            "csrf_token": token,
-        },
-    )
-
-
-@app.post("/delete-rows", response_class=JSONResponse)
-@security.limiter.limit("30/minute")
-async def delete_selected_rows(
-    request: Request,
-    selected_ids: str = Form(...),
-    new_csrf_token: str = Depends(security.validate_csrf),
-    db: AsyncSession = Depends(get_db),  # <-- AÑADIDO
-):
-    """
-    Elimina (marca) filas seleccionadas.
-    Guarda el cambio en la BD si el usuario está logueado.
-    """
-    # Validar y filtrar UUIDs
-    ids_to_delete = security.validate_uuid_list(selected_ids)
-
-    if not ids_to_delete:
-        return JSONResponse(
-            {"success": False, "message": "No valid IDs provided."}, status_code=400
-        )
-
-    schedule_data = request.state.session.get(
-        "schedule_data", schedule_service.get_empty_schedule_data()  #
-    )
-    all_rows = schedule_data.get("all_rows", [])
-
-    # Usar el servicio para la lógica de borrado
-    all_rows, deleted_count = schedule_service.delete_rows_by_id(
-        all_rows, ids_to_delete
-    )
-
-    # Lógica de sesión restante
-    if not schedule_service.filter_active_rows(all_rows):  #
-        schedule_data["processed_files"] = []
-
-    schedule_data["all_rows"] = all_rows
-    request.state.session["schedule_data"] = schedule_data  #
-
-    # --- INICIO DE LA SOLUCIÓN ---
-    # Persistir el cambio en la BD si el usuario está logueado
-    if request.state.is_authenticated and request.state.user:
-        try:
-            await auth.save_schedule_to_db(db, request.state.user.id, schedule_data)  #
-        except Exception as e:
-            print(f"Error guardando schedule en BD tras borrado: {e}")
-            # Devolver error en JSON si falla el guardado
-            return JSONResponse(
-                {"success": False, "message": "Error al guardar en BD."},
-                status_code=500,
-            )
-    # --- FIN DE LA SOLUCIÓN ---
-
-    return JSONResponse(
-        {
-            "success": True,
-            "message": f"Deleted {deleted_count} rows.",
-            "new_csrf_token": new_csrf_token,  #
-        }
-    )
-
-
-@app.post("/restore-rows", response_class=JSONResponse)
-@security.limiter.limit("30/minute")
-async def restore_deleted_rows(
-    request: Request,
-    new_csrf_token: str = Depends(security.validate_csrf),
-    db: AsyncSession = Depends(get_db),  # <-- AÑADIDO
-):
-    """
-    Restaura todas las filas borradas.
-    Guarda el cambio en la BD si el usuario está logueado.
-    """
-    schedule_data = request.state.session.get(
-        "schedule_data", schedule_service.get_empty_schedule_data()  #
-    )
-    all_rows = schedule_data.get("all_rows", [])
-
-    if not all_rows:
-        return JSONResponse(
-            {
-                "success": True,
-                "message": "No data to restore.",
-                "new_csrf_token": new_csrf_token,  #
-            }
-        )
-
-    # Usar el servicio para la lógica de restauración
-    all_rows, restored_count = schedule_service.restore_deleted_rows(all_rows)
-
-    schedule_data["all_rows"] = all_rows
-    request.state.session["schedule_data"] = schedule_data  #
-
-    # --- INICIO DE LA SOLUCIÓN ---
-    # Persistir el cambio en la BD si el usuario está logueado
-    if request.state.is_authenticated and request.state.user:
-        try:
-            await auth.save_schedule_to_db(db, request.state.user.id, schedule_data)  #
-        except Exception as e:
-            print(f"Error guardando schedule en BD tras restaurar: {e}")
-            return JSONResponse(
-                {"success": False, "message": "Error al guardar en BD."},
-                status_code=500,
-            )
-    # --- FIN DE LA SOLUCIÓN ---
-
-    return JSONResponse(
-        {
-            "success": True,
-            "message": f"Restored {restored_count} rows.",
-            "new_csrf_token": new_csrf_token,
-        }
-    )
-
-
-@app.post("/delete-data", response_class=JSONResponse)
-@security.limiter.limit("10/minute")
-async def delete_data(
-    request: Request,
-    new_csrf_token: str = Depends(security.validate_csrf),
-    db: AsyncSession = Depends(get_db),  # <-- AÑADIDO
-):
-    """
-    Limpia todos los datos del horario actual.
-    Guarda este estado vacío en la BD si el usuario está logueado.
-    """
-    # Usar el servicio para obtener un estado vacío
-    empty_schedule_data = schedule_service.get_empty_schedule_data()
-    request.state.session["schedule_data"] = empty_schedule_data  #
-
-    # --- INICIO DE LA SOLUCIÓN ---
-    # Persistir el estado vacío en la BD si el usuario está logueado
-    if request.state.is_authenticated and request.state.user:
-        try:
-            await auth.save_schedule_to_db(  #
-                db, request.state.user.id, empty_schedule_data
-            )
-        except Exception as e:
-            print(f"Error guardando schedule en BD tras limpiar datos: {e}")
-            return JSONResponse(
-                {"success": False, "message": "Error al guardar en BD."},
-                status_code=500,
-            )
-    # --- FIN DE LA SOLUCIÓN ---
-
-    return JSONResponse(
-        {
-            "success": True,
-            "message": "All data cleared.",
-            "new_csrf_token": new_csrf_token,  #
-        }
-    )
-
-
-@app.get("/schedule")
-@security.limiter.limit("60/minute")
-async def get_schedule_tsv(request: Request):
-    schedule_data = request.state.session.get(
-        "schedule_data", schedule_service.get_empty_schedule_data()
-    )
-    all_rows = schedule_data.get("all_rows", [])
-
-    active_rows = schedule_service.filter_active_rows(all_rows)
-    active_rows_data = [row["data"] for row in active_rows]
-
-    # Usar el generador de respuestas
-    return response_generators.generate_tsv_response(active_rows_data)
-
-
-@app.get("/download-excel")
-@security.limiter.limit("30/minute")
-async def download_excel(request: Request):
-    schedule_data = request.state.session.get(
-        "schedule_data", schedule_service.get_empty_schedule_data()
-    )
-    all_rows = schedule_data.get("all_rows", [])
-
-    active_rows = schedule_service.filter_active_rows(all_rows)
-    active_rows_data = [row["data"] for row in active_rows]
-
-    # Usar el generador de respuestas
-    return response_generators.generate_excel_response(active_rows_data)
-
-
-# --- Endpoints de Administración de Usuarios ---
-
-
-@app.get("/admin/users", response_class=HTMLResponse)
-async def admin_users_list(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(auth.get_current_admin_user),
-):
-    """
-    Lista todos los usuarios (solo para admins)
-    """
-    users = await auth.get_all_users_from_db(db)
-
-    token = security.get_or_create_csrf_token(request.state.session)
-
-    return templates.TemplateResponse(
-        "admin_users.html",
-        {
-            "request": request,
-            "users": users,
-            "current_user": current_user,
-            "csrf_token": token,
-        },
-    )
-
-
-@app.post("/admin/users", response_class=RedirectResponse)
-async def admin_create_user(
-    request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-    full_name: str = Form(...),
-    role: str = Form(...),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(auth.get_current_admin_user),
-    is_csrf_valid: bool = Depends(security.validate_csrf),
-):
-    """
-    Crear nuevo usuario (solo para admins)
-    """
-    try:
-        await auth.create_user_in_db(
-            db=db, username=username, password=password, full_name=full_name, role=role
-        )
-        return RedirectResponse(
-            url="/admin/users?success=user_created", status_code=303
-        )
-    except HTTPException as e:
-        return RedirectResponse(url=f"/admin/users?error={e.detail}", status_code=303)
-
-
-@app.post("/admin/users/{user_id}/delete", response_class=RedirectResponse)
-async def admin_delete_user(
-    request: Request,
-    user_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(auth.get_current_admin_user),
-    is_csrf_valid: bool = Depends(security.validate_csrf),
-):
-    """
-    Eliminar usuario (solo para admins)
-    """
-    # Validar que el user_id sea un UUID válido
-    if not security.validate_uuid(user_id):
-        return RedirectResponse(
-            url="/admin/users?error=invalid_user_id", status_code=303
-        )
-
-    try:
-        await auth.delete_user_from_db(db, user_id, current_user.id)
-        return RedirectResponse(
-            url="/admin/users?success=user_deleted", status_code=303
-        )
-    except HTTPException as e:
-        return RedirectResponse(url=f"/admin/users?error={e.detail}", status_code=303)
-
-
-# Agregar validación en cualquier otro endpoint que reciba IDs
-async def validate_user_id(user_id: str):
-    """Dependencia para validar user_id en paths"""
-    if not security.validate_uuid(user_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID format"
-        )
-    return user_id
+# ============================================================================
+# REGISTRO DE ROUTERS POR DOMINIO FUNCIONAL
+# ============================================================================
+
+app.include_router(auth.router)      # Autenticación y gestión de usuarios
+app.include_router(schedule.router)  # Gestión de horarios y procesamiento de archivos
+app.include_router(admin.router)     # Administración de usuarios (solo admins)
+app.include_router(zoom.router)      # Integración OAuth con Zoom

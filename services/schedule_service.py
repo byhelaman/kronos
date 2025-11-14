@@ -1,7 +1,11 @@
-# schedule_service.py
+# services/schedule_service.py
+"""
+Servicio para la lógica de negocio relacionada con horarios.
+Este archivo contiene funciones puras de lógica de negocio.
+"""
 import uuid
 from typing import List, Dict, Any, Set, Tuple
-from core.config import Schedule  # Importamos el namedtuple
+from core.config import Schedule
 
 
 def _get_business_key(row_data: Dict[str, Any]) -> Tuple:
@@ -49,27 +53,25 @@ def merge_new_schedules(
     """
     # Copiamos para evitar mutaciones inesperadas
     all_rows = [row.copy() for row in current_rows]
-
+    
     rows_by_key: Dict[Tuple, Dict] = {
         _get_business_key(row["data"]): row for row in all_rows
     }
-
+    
     new_entries = []
 
     for schedule in new_schedules:
-        # inner_data = schedule._asdict() # Convertir namedtuple a dict
-
         inner_data = {
-            "date": getattr(schedule, "date", ""),
-            "shift": getattr(schedule, "shift", ""),
-            "area": getattr(schedule, "area", ""),
-            "start_time": getattr(schedule, "start_time", ""),
-            "end_time": getattr(schedule, "end_time", ""),
-            "code": getattr(schedule, "code", ""),
-            "instructor": getattr(schedule, "instructor", ""),
-            "group": getattr(schedule, "group", ""),
-            "minutes": getattr(schedule, "minutes", 0),
-            "units": getattr(schedule, "units", 0),
+            "date": getattr(schedule, 'date', ''),
+            "shift": getattr(schedule, 'shift', ''),
+            "area": getattr(schedule, 'area', ''),
+            "start_time": getattr(schedule, 'start_time', ''),
+            "end_time": getattr(schedule, 'end_time', ''),
+            "code": getattr(schedule, 'code', ''),
+            "instructor": getattr(schedule, 'instructor', ''),
+            "group": getattr(schedule, 'group', ''),
+            "minutes": getattr(schedule, 'minutes', 0),
+            "units": getattr(schedule, 'units', 0),
         }
 
         row_tuple = _get_business_key(inner_data)
@@ -113,7 +115,7 @@ def restore_deleted_rows(current_rows: List[Dict]) -> Tuple[List[Dict], int]:
     Devuelve una NUEVA lista de 'all_rows' y el contador de filas restauradas.
     """
     all_rows = [row.copy() for row in current_rows]
-
+    
     active_rows_set: Set[Tuple] = {
         _get_business_key(row["data"]) for row in all_rows if row["status"] == "active"
     }
@@ -128,3 +130,4 @@ def restore_deleted_rows(current_rows: List[Dict]) -> Tuple[List[Dict], int]:
                 active_rows_set.add(row_tuple)
 
     return all_rows, restored_count
+

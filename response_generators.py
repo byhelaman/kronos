@@ -1,4 +1,7 @@
 # response_generators.py
+"""
+Generadores de respuestas para diferentes formatos de exportación.
+"""
 import pandas as pd
 from io import BytesIO
 from typing import List, Dict, Any

@@ -7,10 +7,12 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import Response
 from fastapi.templating import Jinja2Templates
 
-from config import REDIS_URL, SESSION_COOKIE_NAME
-import auth
-import schedule_service
+from core.config import REDIS_URL, SESSION_COOKIE_NAME
+from models.user_model import User
+from services import schedule_service
 from database import AsyncSessionLocal
+from repositories.user_repository import UserRepository
+from repositories.schedule_repository import ScheduleRepository
 
 logger = logging.getLogger(__name__)
 
@@ -75,18 +77,21 @@ class RedisSessionMiddleware(BaseHTTPMiddleware):
         if session_data.get("is_authenticated") and session_user_id:
             try:
                 async with AsyncSessionLocal() as db_session:
-                    user_db_model = await auth.get_user_from_db(
+                    user_repo = UserRepository()
+                    schedule_repo = ScheduleRepository()
+
+                    user_db_model = await user_repo.get_by_id(
                         db_session, session_user_id
                     )
 
                     if user_db_model and user_db_model.is_active:
-                        request.state.user = auth.User.model_validate(user_db_model)
+                        request.state.user = User.model_validate(user_db_model)
                         request.state.is_authenticated = True
                         logger.debug(f"Usuario autenticado: {user_db_model.username}")
 
                         # --- INICIO: LÓGICA DE CARGA DE HORARIO ---
                         # Cargar el horario AUTORITATIVO desde la BD
-                        db_schedule = await auth.get_schedule_from_db(
+                        db_schedule = await schedule_repo.get_by_user_id(
                             db_session, user_db_model.id
                         )
                         if db_schedule:
@@ -130,12 +135,9 @@ class RedisSessionMiddleware(BaseHTTPMiddleware):
                     schedule_service.get_empty_schedule_data()
                 )
 
-        # Inyección global para templates
-        if self.templates:
-            self.templates.env.globals["current_user"] = request.state.user
-            self.templates.env.globals["is_authenticated"] = (
-                request.state.is_authenticated
-            )
+        # Las variables de autenticación se inyectan dinámicamente
+        # a través del context processor en core/templates.py
+        # Esto asegura que siempre reflejen el estado actual de la request
 
         response = await call_next(request)
 

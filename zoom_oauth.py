@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 import os
 import hashlib
 
-import config
+from core import config
 
 # --- Configuración de URLs de Zoom ---
 AUTHORIZATION_URL = "https://zoom.us/oauth/authorize"

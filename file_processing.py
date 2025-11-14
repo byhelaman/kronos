@@ -6,7 +6,7 @@ import pandas as pd
 from fastapi import UploadFile
 from typing import List, Dict, Any
 from parsers import parse_excel_file
-from config import (
+from core.config import (
     ALLOWED_EXTENSIONS,
     ALLOWED_MIME_TYPES,
     MAX_FILE_SIZE,
