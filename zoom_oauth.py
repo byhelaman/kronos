@@ -51,6 +51,7 @@ def get_zoom_auth_url() -> tuple[str, str]:
     """
     Construye la URL de autorización Y genera las claves PKCE.
     Devuelve: (auth_url, code_verifier)
+    Nota: El parámetro 'state' debe agregarse en el router que llama esta función.
     """
 
     # --- Lógica PKCE (del script CLI) ---
@@ -73,7 +74,7 @@ def get_zoom_auth_url() -> tuple[str, str]:
 
     auth_url = f"{AUTHORIZATION_URL}?{urlencode(params)}"
 
-    # Devolvemos ambos valores
+    # Devolvemos ambos valores (el state se agrega en el router)
     return auth_url, code_verifier
 
 
@@ -111,14 +112,22 @@ async def exchange_code_for_tokens(code: str, code_verifier: str) -> dict:
         return response.json()
 
     except httpx.HTTPStatusError as e:
-        print(f"Error al intercambiar código de Zoom: {e.response.text}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error al intercambiar código de Zoom: {e.response.text}")
+        # No exponer detalles internos al usuario
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error de API de Zoom al obtener token: {e.response.text}",
+            detail="Error al conectar con Zoom. Por favor, intente más tarde.",
         )
     except Exception as e:
-        print(f"Error inesperado de red: {e}")
-        raise HTTPException(status_code=500, detail="Error de red conectando con Zoom")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error inesperado de red: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error de red conectando con Zoom. Por favor, intente más tarde.",
+        )
 
 
 async def get_zoom_user_info(access_token: str) -> dict:
@@ -136,8 +145,11 @@ async def get_zoom_user_info(access_token: str) -> dict:
         return {"id": user_info.get("id"), "email": user_info.get("email")}
 
     except httpx.HTTPStatusError as e:
-        print(f"Error al obtener info de usuario de Zoom: {e.response.text}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error al obtener info de usuario de Zoom: {e.response.text}")
+        # No exponer detalles internos al usuario
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error de API de Zoom al obtener usuario: {e.response.text}",
+            detail="Error al obtener información de Zoom. Por favor, intente más tarde.",
         )

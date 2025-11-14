@@ -8,6 +8,7 @@ Este servicio encapsula la lógica de negocio relacionada con:
 - Persistencia de horarios de usuarios
 """
 
+import logging
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Request
@@ -16,6 +17,8 @@ from repositories.user_repository import UserRepository
 from repositories.schedule_repository import ScheduleRepository
 from models.user_model import User
 from services import schedule_service
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -138,7 +141,7 @@ class AuthService:
                     )
                 except Exception as e:
                     # Log del error pero no fallar el logout
-                    print(f"Error guardando schedule en BD durante logout: {e}")
+                    logger.error(f"Error guardando schedule en BD durante logout: {e}")
 
         # Limpiar todos los datos de autenticación de la sesión
         request.state.session["user_id"] = None

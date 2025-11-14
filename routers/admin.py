@@ -2,12 +2,15 @@
 """
 Router para endpoints de administración de usuarios.
 """
+import re
+import logging
 from fastapi import (
     APIRouter,
     Request,
     Form,
     Depends,
     HTTPException,
+    status,
 )
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,9 +21,72 @@ from repositories.user_repository import UserRepository
 from core.templates import render_template
 import security
 
+# Logger para eventos de seguridad
+security_logger = logging.getLogger("security")
+
 router = APIRouter()
 
 user_repo = UserRepository()
+
+
+def validate_username(username: str) -> str:
+    """Valida el formato y longitud del nombre de usuario."""
+    if not username or len(username) < 3:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El nombre de usuario debe tener al menos 3 caracteres.",
+        )
+    if len(username) > 50:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El nombre de usuario no puede exceder 50 caracteres.",
+        )
+    if not re.match(r"^[a-zA-Z0-9_]+$", username):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El nombre de usuario solo puede contener letras, números y guiones bajos.",
+        )
+    return username
+
+
+def validate_password(password: str) -> str:
+    """Valida la política de contraseñas."""
+    if not password or len(password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La contraseña debe tener al menos 8 caracteres.",
+        )
+    if len(password) > 200:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La contraseña no puede exceder 200 caracteres.",
+        )
+    return password
+
+
+def validate_full_name(full_name: str) -> str:
+    """Valida el nombre completo."""
+    if not full_name or len(full_name.strip()) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El nombre completo no puede estar vacío.",
+        )
+    if len(full_name) > 200:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El nombre completo no puede exceder 200 caracteres.",
+        )
+    return full_name.strip()
+
+
+def validate_role(role: str) -> str:
+    """Valida que el rol sea válido."""
+    if role not in ["user", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El rol debe ser 'user' o 'admin'.",
+        )
+    return role
 
 
 @router.get("/admin/users", response_class=HTMLResponse)
@@ -58,14 +124,35 @@ async def admin_create_user(
 ):
     """Crear nuevo usuario (solo para admins)."""
     try:
+        # Validar todas las entradas
+        validated_username = validate_username(username)
+        validated_password = validate_password(password)
+        validated_full_name = validate_full_name(full_name)
+        validated_role = validate_role(role)
+
         await user_repo.create(
-            db=db, username=username, password=password, full_name=full_name, role=role
+            db=db,
+            username=validated_username,
+            password=validated_password,
+            full_name=validated_full_name,
+            role=validated_role,
         )
+        
+        # Log creación de usuario
+        security_logger.info(
+            f"User created - username: {validated_username} - role: {validated_role} - "
+            f"created_by: {current_user.username}"
+        )
+        
         return RedirectResponse(
             url="/admin/users?success=user_created", status_code=303
         )
     except HTTPException as e:
-        return RedirectResponse(url=f"/admin/users?error={e.detail}", status_code=303)
+        # Escapar el mensaje de error para prevenir XSS en la URL
+        error_msg = str(e.detail).replace("&", "%26").replace("=", "%3D")
+        return RedirectResponse(
+            url=f"/admin/users?error={error_msg}", status_code=303
+        )
 
 
 @router.post("/admin/users/{user_id}/delete", response_class=RedirectResponse)
@@ -84,7 +171,18 @@ async def admin_delete_user(
         )
 
     try:
+        # Obtener información del usuario antes de eliminarlo para logging
+        user_to_delete = await user_repo.get_by_id(db, user_id)
+        username_to_delete = user_to_delete.username if user_to_delete else "unknown"
+        
         await user_repo.delete(db, user_id, current_user.id)
+        
+        # Log eliminación de usuario
+        security_logger.info(
+            f"User deleted - username: {username_to_delete} - "
+            f"deleted_by: {current_user.username}"
+        )
+        
         return RedirectResponse(
             url="/admin/users?success=user_deleted", status_code=303
         )

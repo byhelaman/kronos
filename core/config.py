@@ -51,6 +51,10 @@ except Exception as e:
 # Nombre de la cookie de sesión
 SESSION_COOKIE_NAME = "file_session_id"
 
+# Configuración de entorno (development, staging, production)
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+IS_PRODUCTION = ENVIRONMENT == "production"
+
 # ============================================================================
 # CONFIGURACIÓN DE INTEGRACIÓN CON ZOOM
 # ============================================================================

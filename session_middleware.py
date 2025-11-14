@@ -221,12 +221,13 @@ class RedisSessionMiddleware(BaseHTTPMiddleware):
                 logger.error(f"Error guardando la sesión en Redis: {e}")
 
             if new_session:
+                from core.config import IS_PRODUCTION
                 response.set_cookie(
                     key=SESSION_COOKIE_NAME,
                     value=session_id,
                     httponly=True,
                     samesite="lax",
-                    secure=True,  # ¡IMPORTANTE: Solo sobre HTTPS!
+                    secure=IS_PRODUCTION,  # Solo HTTPS en producción
                     max_age=60 * 60 * 8,  # 8 horas
                 )
 

@@ -2,6 +2,8 @@
 """
 Router para endpoints de integración con Zoom OAuth.
 """
+import re
+import secrets
 from fastapi import (
     APIRouter,
     Request,
@@ -35,8 +37,15 @@ async def zoom_auth_start(
     # Obtener AMBOS valores de la función
     auth_url, code_verifier = zoom_oauth.get_zoom_auth_url()
 
-    # Guardar el verifier en la sesión ANTES de redirigir
+    # Generar state token para prevenir CSRF
+    state_token = secrets.token_hex(32)
+    
+    # Guardar el verifier y state en la sesión ANTES de redirigir
     request.state.session["zoom_code_verifier"] = code_verifier
+    request.state.session["zoom_oauth_state"] = state_token
+
+    # Agregar state a la URL
+    auth_url += f"&state={state_token}"
 
     return RedirectResponse(url=auth_url)
 
@@ -62,12 +71,25 @@ async def zoom_unlink(
 async def zoom_auth_callback(
     request: Request,
     code: str,
+    state: str = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Callback de OAuth de Zoom."""
     # Verificamos autenticación
     if not request.state.is_authenticated or not request.state.user:
         return RedirectResponse(url="/login?error=zoom_auth_failed", status_code=303)
+
+    # Validar código OAuth
+    if not code:
+        return RedirectResponse(url="/profile?error=zoom_auth_failed", status_code=303)
+    
+    if len(code) > 500 or not re.match(r"^[a-zA-Z0-9_-]+$", code):
+        return RedirectResponse(url="/profile?error=zoom_auth_failed", status_code=303)
+
+    # Validar state token para prevenir CSRF
+    stored_state = request.state.session.pop("zoom_oauth_state", None)
+    if not stored_state or not state or not secrets.compare_digest(stored_state, state):
+        return RedirectResponse(url="/profile?error=zoom_auth_failed", status_code=303)
 
     current_user = request.state.user
     code_verifier = request.state.session.pop("zoom_code_verifier", None)
@@ -122,7 +144,9 @@ async def zoom_auth_callback(
         )
 
     except Exception as e:
-        print(f"Error en el callback de Zoom: {e}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error en el callback de Zoom: {e}")
         return HTMLResponse(
             """
             <script>

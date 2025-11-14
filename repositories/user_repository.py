@@ -3,6 +3,7 @@
 Repositorio para operaciones de base de datos relacionadas con usuarios.
 """
 import uuid
+import logging
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -10,6 +11,8 @@ from fastapi import HTTPException, status
 
 import db_models
 import security
+
+logger = logging.getLogger(__name__)
 
 
 class UserRepository:
@@ -36,7 +39,7 @@ class UserRepository:
             return user
 
         except Exception as e:
-            print(f"Error de autenticación: {e}")
+            logger.error(f"Error de autenticación: {e}")
             await db.rollback()
             raise
 
@@ -158,6 +161,6 @@ class UserRepository:
             return {"access_token": access_token, "refresh_token": refresh_token}
 
         except security.InvalidToken:
-            print(f"Error: No se pudieron descifrar los tokens para el user_id {user_id}.")
+            logger.error(f"Error: No se pudieron descifrar los tokens para el user_id {user_id}.")
             return None
 

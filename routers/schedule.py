@@ -90,7 +90,25 @@ async def generate_schedule(
         if file.filename in processed_files_set:
             continue
 
-        content = await file.read()
+        # Leer archivo en chunks y validar tamaño antes de leer completamente
+        from core.config import MAX_FILE_SIZE
+        content = b""
+        size = 0
+        chunk_size = 8192  # 8KB chunks
+        
+        while True:
+            chunk = await file.read(chunk_size)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_FILE_SIZE:
+                upload_errors.append(f"Archivo omitido (excede 5MB): {file.filename}")
+                break
+            content += chunk
+        
+        # Si el archivo excedió el tamaño, continuar con el siguiente
+        if size > MAX_FILE_SIZE:
+            continue
 
         # 1. Validar archivo
         error = file_processing.validate_file(file, content)
@@ -124,7 +142,9 @@ async def generate_schedule(
         try:
             await schedule_repo.save(db, request.state.user.id, schedule_data)
         except Exception as e:
-            print(f"Error guardando schedule en BD tras subida: {e}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error guardando schedule en BD tras subida: {e}")
 
     return RedirectResponse(url="/generate-schedule", status_code=303)
 
@@ -192,7 +212,9 @@ async def delete_selected_rows(
         try:
             await schedule_repo.save(db, request.state.user.id, schedule_data)
         except Exception as e:
-            print(f"Error guardando schedule en BD tras borrado: {e}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error guardando schedule en BD tras borrado: {e}")
             return JSONResponse(
                 {"success": False, "message": "Error al guardar en BD."},
                 status_code=500,
@@ -240,7 +262,9 @@ async def restore_deleted_rows(
         try:
             await schedule_repo.save(db, request.state.user.id, schedule_data)
         except Exception as e:
-            print(f"Error guardando schedule en BD tras restaurar: {e}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error guardando schedule en BD tras restaurar: {e}")
             return JSONResponse(
                 {"success": False, "message": "Error al guardar en BD."},
                 status_code=500,
@@ -274,7 +298,9 @@ async def delete_data(
                 db, request.state.user.id, empty_schedule_data
             )
         except Exception as e:
-            print(f"Error guardando schedule en BD tras limpiar datos: {e}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error guardando schedule en BD tras limpiar datos: {e}")
             return JSONResponse(
                 {"success": False, "message": "Error al guardar en BD."},
                 status_code=500,

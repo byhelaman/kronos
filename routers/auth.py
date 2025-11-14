@@ -8,6 +8,7 @@ Este módulo define los endpoints relacionados con:
 """
 
 import uuid
+import logging
 from fastapi import (
     APIRouter,
     Request,
@@ -26,6 +27,9 @@ from repositories.schedule_repository import ScheduleRepository
 from services.auth_service import AuthService
 from core.templates import render_template
 import security
+
+# Logger para eventos de seguridad
+security_logger = logging.getLogger("security")
 
 # ============================================================================
 # CONFIGURACIÓN DEL ROUTER
@@ -63,7 +67,7 @@ async def login_get(request: Request):
 
 
 @router.post("/login", response_class=RedirectResponse)
-@security.limiter.limit("5/minute")
+@security.limiter.limit("3/minute")
 async def login_post(
     request: Request,
     username: str = Form(...),
@@ -93,8 +97,19 @@ async def login_post(
     user = await auth_service.authenticate_user(db, username, password)
 
     if not user:
+        # Log intento de login fallido
+        client_ip = request.client.host if request.client else "unknown"
+        security_logger.warning(
+            f"Failed login attempt - username: {username} - IP: {client_ip}"
+        )
         # No revelar si el usuario existe o no (seguridad)
         return RedirectResponse(url="/login?result=auth", status_code=303)
+    
+    # Log login exitoso
+    client_ip = request.client.host if request.client else "unknown"
+    security_logger.info(
+        f"Successful login - username: {user.username} - IP: {client_ip}"
+    )
 
     # Rotación de sesión por seguridad (previene session fixation attacks)
     # Se hace antes de actualizar datos para mantener la integridad

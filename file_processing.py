@@ -2,6 +2,7 @@
 import os
 import tempfile
 import asyncio
+import logging
 import pandas as pd
 from fastapi import UploadFile
 from typing import List, Dict, Any
@@ -13,6 +14,8 @@ from core.config import (
     EXPECTED_GENERATED_HEADERS,
     Schedule,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def validate_file(file: UploadFile, content: bytes) -> str | None:
@@ -115,7 +118,7 @@ async def process_single_file(file: UploadFile, content: bytes) -> List[Schedule
         return schedules
 
     except Exception as e:
-        print(f"Error detectando/parseando el archivo {file.filename}: {e}")
+        logger.error(f"Error detectando/parseando el archivo {file.filename}: {e}")
         # Re-lanzamos la excepción para que el endpoint la capture
         raise e
     finally:
