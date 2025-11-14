@@ -36,3 +36,4 @@ aiosqlite
 httpx
 psycopg[binary]
 orjson  # Serialización JSON más rápida que json estándar
+httpx[http2]

@@ -51,6 +51,10 @@ async def zoom_unlink(
     """Elimina los tokens de Zoom del usuario actual."""
     await user_repo.remove_zoom_tokens(db, current_user.id)
 
+    # Invalidar cache de usuario para forzar recarga desde BD en el siguiente request
+    request.state.session.pop("_cached_user", None)
+    request.state.session["_user_cache_expiry"] = 0
+
     return RedirectResponse(url="/profile?success=zoom_unlinked", status_code=303)
 
 
@@ -98,6 +102,10 @@ async def zoom_auth_callback(
             access_token=access_token,
             refresh_token=refresh_token,
         )
+
+        # Invalidar cache de usuario para forzar recarga desde BD en el siguiente request
+        request.state.session.pop("_cached_user", None)
+        request.state.session["_user_cache_expiry"] = 0
 
         # Devolvemos un script JS para actualizar la ventana PADRE y cerrar el POPUP
         return HTMLResponse(
