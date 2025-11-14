@@ -31,7 +31,7 @@ icons %} {% include "header.html" %} {% if data %} {% include "dashboard.html" %
 
 {% endif %}
 
-<script type="module">
+<script type="module" nonce="{{ csp_nonce }}">
   import { TableManager } from "/static/js/table-manager.js";
   import { notificationManager } from "/static/js/notification.js";
 
@@ -423,7 +423,7 @@ icons %} {% include "header.html" %} {% if data %} {% include "dashboard.html" %
   });
 </script>
 
-<style>
+<style nonce="{{ csp_nonce }}">
   .upload-container {
     max-width: 24rem;
   }

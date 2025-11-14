@@ -72,7 +72,7 @@
   </section>
 </header>
 
-<script>
+<script nonce="{{ csp_nonce }}">
   (() => {
     if (localStorage.getItem("theme") === "dark") {
       document.documentElement.classList.add("dark");

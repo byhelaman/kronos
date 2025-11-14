@@ -30,7 +30,7 @@
   {% include "table.html" %}
 </div>
 
-<style>
+<style nonce="{{ csp_nonce }}">
   .data-table .col-extra {
     display: table-cell;
   }
@@ -52,7 +52,7 @@
     background: var(--color-background-grey-hover);
   }
 </style>
-<script>
+<script nonce="{{ csp_nonce }}">
   document.addEventListener("DOMContentLoaded", () => {
     const toggleBtn = document.getElementById("toggle-columns-btn");
     const dataTable = document.getElementById("data-preview-table");

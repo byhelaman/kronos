@@ -48,9 +48,9 @@
                 <div class="link-status link-status--unlinked mb-3">
                     <span>Not Linked</span>
                 </div>
-                <button class="btn btn--primary w-full" id="zoom-auth-btn">
+                <a href="/auth/zoom" class="btn btn--primary w-full">
                     <span>Link Zoom Account</span>
-                </button>
+                </a>
                 {% endif %}
             </div>
         </div>
@@ -63,38 +63,5 @@
         {% endif %}
     </div>
 </div>
-<script>
-    const zoomBtn = document.getElementById('zoom-auth-btn');
-    if (zoomBtn) {
-        zoomBtn.addEventListener('click', function (e) {
-            e.preventDefault();
-
-            const width = 600;
-            const height = 700;
-
-            // Calcular posición centrada dual-monitor safe
-            const screenLeft = window.screenLeft !== undefined ? window.screenLeft : window.screenX;
-            const screenTop = window.screenTop !== undefined ? window.screenTop : window.screenY;
-
-            const innerWidth = window.innerWidth ? window.innerWidth : document.documentElement.clientWidth ? document.documentElement.clientWidth : screen.width;
-            const innerHeight = window.innerHeight ? window.innerHeight : document.documentElement.clientHeight ? document.documentElement.clientHeight : screen.height;
-
-            const left = screenLeft + (innerWidth / 2) - (width / 2);
-            const top = (screenTop + (innerHeight / 2) - (height / 2)) + 40;
-
-            // Abrir popup
-            const popup = window.open(
-                '/auth/zoom',
-                'ZoomAuthPopup',
-                `scrollbars=yes, width=${width}, height=${height}, top=${top}, left=${left}`
-            );
-
-            // Enfocar el popup por si acaso el navegador lo manda al fondo
-            if (window.focus && popup) {
-                popup.focus();
-            }
-        });
-    }
-</script>
 
 {% endblock %}

@@ -113,6 +113,7 @@ async def exchange_code_for_tokens(code: str, code_verifier: str) -> dict:
 
     except httpx.HTTPStatusError as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Error al intercambiar código de Zoom: {e.response.text}")
         # No exponer detalles internos al usuario
@@ -122,6 +123,7 @@ async def exchange_code_for_tokens(code: str, code_verifier: str) -> dict:
         )
     except Exception as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Error inesperado de red: {e}")
         raise HTTPException(
@@ -146,6 +148,7 @@ async def get_zoom_user_info(access_token: str) -> dict:
 
     except httpx.HTTPStatusError as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Error al obtener info de usuario de Zoom: {e.response.text}")
         # No exponer detalles internos al usuario

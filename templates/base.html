@@ -26,7 +26,7 @@
   </main>
 </body>
 <script type="module" src="{{ url_for('static', path='/js/script.js') }}"></script>
-<script>
+<script nonce="{{ csp_nonce }}">
   document.addEventListener("DOMContentLoaded", () => {
     const userMenuBtn = document.getElementById("user-menu-btn");
     const userMenu = document.getElementById("user-menu");

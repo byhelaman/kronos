@@ -149,7 +149,9 @@ async def admin_create_user(
         )
     except HTTPException as e:
         # Escapar el mensaje de error para prevenir XSS en la URL
-        error_msg = str(e.detail).replace("&", "%26").replace("=", "%3D")
+        # Usar urllib.parse.quote para escape seguro de URLs
+        from urllib.parse import quote
+        error_msg = quote(str(e.detail), safe='')
         return RedirectResponse(
             url=f"/admin/users?error={error_msg}", status_code=303
         )
@@ -187,5 +189,8 @@ async def admin_delete_user(
             url="/admin/users?success=user_deleted", status_code=303
         )
     except HTTPException as e:
-        return RedirectResponse(url=f"/admin/users?error={e.detail}", status_code=303)
+        # Escapar el mensaje de error para prevenir XSS en la URL
+        from urllib.parse import quote
+        error_msg = quote(str(e.detail), safe='')
+        return RedirectResponse(url=f"/admin/users?error={error_msg}", status_code=303)
 

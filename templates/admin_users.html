@@ -4,7 +4,7 @@
 {% include "header.html" %}
 
 <div class="admin-container">
-    <h4>Gestión de Usuarios</h4>
+    <h4>Manage Users</h4>
 
     <!-- Mensajes -->
     {% if request.query_params.get('success') %}
@@ -97,10 +97,11 @@
                             </td>
                             <td>
                                 {% if user.id != current_user.id %}
-                                <form method="post" action="/admin/users/{{ user.id }}/delete" class="inline-form">
+                                <form method="post" action="/admin/users/{{ user.id }}/delete"
+                                    class="inline-form delete-user-form">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <button type="submit" class="btn btn--danger btn--sm"
-                                        onclick="return confirm('¿Estás seguro de que quieres eliminar a {{ user.username }}?')">
+                                        data-username="{{ user.username|e }}">
                                         Eliminar
                                     </button>
                                 </form>
@@ -117,7 +118,7 @@
     </div>
 </div>
 
-<style>
+<style nonce="{{ csp_nonce }}">
     .wrap-box {
         display: flex;
         flex-direction: column;
@@ -136,4 +137,20 @@
         text-align: center;
     }
 </style>
+<script nonce="{{ csp_nonce }}">
+    // Manejar confirmación de eliminación de forma segura (previene XSS)
+    document.addEventListener('DOMContentLoaded', function () {
+        const deleteForms = document.querySelectorAll('.delete-user-form');
+        deleteForms.forEach(function (form) {
+            form.addEventListener('submit', function (e) {
+                const button = form.querySelector('button[type="submit"]');
+                const username = button.dataset.username;
+                if (!confirm('¿Estás seguro de que quieres eliminar a ' + username + '?')) {
+                    e.preventDefault();
+                    return false;
+                }
+            });
+        });
+    });
+</script>
 {% endblock %}

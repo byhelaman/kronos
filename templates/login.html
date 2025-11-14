@@ -45,7 +45,7 @@
 
 {% include "social.html" %}
 
-<style>
+<style nonce="{{ csp_nonce }}">
     .login-container {
         max-width: 23rem;
     }
@@ -132,7 +132,7 @@
         margin-bottom: 1.5rem;
     }
 </style>
-<script>
+<script nonce="{{ csp_nonce }}">
     const loginForm = document.querySelector(".login-form");
     const loginBtn = document.getElementById("login-btn");
 

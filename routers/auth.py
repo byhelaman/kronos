@@ -9,6 +9,8 @@ Este módulo define los endpoints relacionados con:
 
 import uuid
 import logging
+import hashlib
+from typing import Tuple
 from fastapi import (
     APIRouter,
     Request,
@@ -44,6 +46,52 @@ auth_service = AuthService(user_repo, schedule_repo)
 
 
 # ============================================================================
+# VALIDACIÓN DE ENTRADA
+# ============================================================================
+
+
+def validate_login_input(username: str, password: str) -> Tuple[str, str]:
+    """
+    Valida las entradas de login para prevenir DoS y ataques de inyección.
+
+    Args:
+        username: Nombre de usuario a validar
+        password: Contraseña a validar
+
+    Returns:
+        Tupla con (username, password) validados
+
+    Raises:
+        HTTPException: Si las entradas son inválidas
+    """
+    # Validar username
+    if not username or len(username.strip()) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Credenciales inválidas",
+        )
+    if len(username) > 100:  # Límite razonable para prevenir DoS
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Credenciales inválidas",
+        )
+
+    # Validar password
+    if not password or len(password) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Credenciales inválidas",
+        )
+    if len(password) > 200:  # Límite razonable para prevenir DoS
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Credenciales inválidas",
+        )
+
+    return username.strip(), password
+
+
+# ============================================================================
 # ENDPOINTS DE AUTENTICACIÓN
 # ============================================================================
 
@@ -73,38 +121,54 @@ async def login_post(
     username: str = Form(...),
     password: str = Form(...),
     db: AsyncSession = Depends(get_db),
+    is_csrf_valid: bool = Depends(security.validate_csrf),
 ):
     """
     Procesa el inicio de sesión de un usuario.
 
     Este endpoint:
-    1. Autentica las credenciales del usuario
-    2. Rota la sesión por seguridad (genera nueva sesión ID)
-    3. Migra datos de invitado a usuario autenticado si es necesario
-    4. Carga o crea el horario del usuario
+    1. Valida las entradas y el token CSRF
+    2. Autentica las credenciales del usuario
+    3. Rota la sesión por seguridad (genera nueva sesión ID)
+    4. Migra datos de invitado a usuario autenticado si es necesario
+    5. Carga o crea el horario del usuario
 
     Args:
         request: Objeto Request de FastAPI
         username: Nombre de usuario
         password: Contraseña en texto plano
         db: Sesión de base de datos inyectada
+        is_csrf_valid: Validación CSRF (inyectada como dependencia)
 
     Returns:
         RedirectResponse: Redirección a la página principal si el login es exitoso,
                          o de vuelta al login con mensaje de error si falla
     """
+    # Validar entradas antes de procesar
+    try:
+        validated_username, validated_password = validate_login_input(
+            username, password
+        )
+    except HTTPException:
+        # No revelar detalles específicos del error (seguridad)
+        return RedirectResponse(url="/login?error=auth_failed", status_code=303)
+
     # Autenticar usuario con credenciales proporcionadas
-    user = await auth_service.authenticate_user(db, username, password)
+    user = await auth_service.authenticate_user(
+        db, validated_username, validated_password
+    )
 
     if not user:
-        # Log intento de login fallido
+        # Log intento de login fallido sin exponer el username completo
+        # Usar hash parcial para prevenir enumeración de usuarios
         client_ip = request.client.host if request.client else "unknown"
+        username_hash = hashlib.sha256(validated_username.encode()).hexdigest()[:8]
         security_logger.warning(
-            f"Failed login attempt - username: {username} - IP: {client_ip}"
+            f"Failed login attempt - username_hash: {username_hash} - IP: {client_ip}"
         )
         # No revelar si el usuario existe o no (seguridad)
-        return RedirectResponse(url="/login?result=auth", status_code=303)
-    
+        return RedirectResponse(url="/login?error=auth_failed", status_code=303)
+
     # Log login exitoso
     client_ip = request.client.host if request.client else "unknown"
     security_logger.info(

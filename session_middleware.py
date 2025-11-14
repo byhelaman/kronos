@@ -22,6 +22,7 @@ from services import schedule_service
 from database import AsyncSessionLocal
 from repositories.user_repository import UserRepository
 from repositories.schedule_repository import ScheduleRepository
+import security
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,12 @@ class RedisSessionMiddleware(BaseHTTPMiddleware):
         session_data = {}
         new_session = False
 
+        # Validar formato del session_id para prevenir inyección
         if session_id:
+            # Validar que sea un UUID válido (36 caracteres con formato UUID)
+            if not security.validate_uuid(session_id):
+                logger.warning(f"Invalid session_id format: {session_id[:20]}...")
+                session_id = None
             try:
                 data_json = await redis_client.get(f"session:{session_id}")
                 if data_json:

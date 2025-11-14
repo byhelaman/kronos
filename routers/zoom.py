@@ -11,7 +11,7 @@ from fastapi import (
     HTTPException,
     status,
 )
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -39,7 +39,7 @@ async def zoom_auth_start(
 
     # Generar state token para prevenir CSRF
     state_token = secrets.token_hex(32)
-    
+
     # Guardar el verifier y state en la sesión ANTES de redirigir
     request.state.session["zoom_code_verifier"] = code_verifier
     request.state.session["zoom_oauth_state"] = state_token
@@ -82,7 +82,7 @@ async def zoom_auth_callback(
     # Validar código OAuth
     if not code:
         return RedirectResponse(url="/profile?error=zoom_auth_failed", status_code=303)
-    
+
     if len(code) > 500 or not re.match(r"^[a-zA-Z0-9_-]+$", code):
         return RedirectResponse(url="/profile?error=zoom_auth_failed", status_code=303)
 
@@ -95,18 +95,9 @@ async def zoom_auth_callback(
     code_verifier = request.state.session.pop("zoom_code_verifier", None)
 
     if not code_verifier:
-        # Si falla, cerramos el popup y recargamos la principal con error
-        return HTMLResponse(
-            """
-            <script>
-                if (window.opener) {
-                    window.opener.location.href = '/profile?error=zoom_session_expired';
-                    window.close();
-                } else {
-                    window.location.href = '/profile?error=zoom_session_expired';
-                }
-            </script>
-            """
+        # Si falla, redirigir al perfil con error
+        return RedirectResponse(
+            url="/profile?error=zoom_session_expired", status_code=303
         )
 
     try:
@@ -129,34 +120,13 @@ async def zoom_auth_callback(
         request.state.session.pop("_cached_user", None)
         request.state.session["_user_cache_expiry"] = 0
 
-        # Devolvemos un script JS para actualizar la ventana PADRE y cerrar el POPUP
-        return HTMLResponse(
-            """
-            <script>
-                if (window.opener) {
-                    window.opener.location.href = '/profile?success=zoom_linked';
-                    window.close();
-                } else {
-                    window.location.href = '/profile?success=zoom_linked';
-                }
-            </script>
-            """
-        )
+        # Redirigir al perfil con mensaje de éxito
+        return RedirectResponse(url="/profile?success=zoom_linked", status_code=303)
 
     except Exception as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Error en el callback de Zoom: {e}")
-        return HTMLResponse(
-            """
-            <script>
-                if (window.opener) {
-                    window.opener.location.href = '/profile?error=zoom_link_failed';
-                    window.close();
-                } else {
-                    window.location.href = '/profile?error=zoom_link_failed';
-                }
-            </script>
-            """
-        )
-
+        # Redirigir al perfil con mensaje de error
+        return RedirectResponse(url="/profile?error=zoom_link_failed", status_code=303)

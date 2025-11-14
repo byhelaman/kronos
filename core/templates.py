@@ -38,6 +38,9 @@ def render_template(
     # Esto asegura que estén actualizadas en cada renderizado
     context["current_user"] = getattr(request.state, "user", None)
     context["is_authenticated"] = getattr(request.state, "is_authenticated", False)
+    
+    # Incluir nonce CSP para scripts inline seguros
+    context["csp_nonce"] = getattr(request.state, "csp_nonce", "")
 
     # Asegurar que request esté en el contexto
     context["request"] = request
