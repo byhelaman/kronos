@@ -1,4 +1,5 @@
 import * as utils from "./utils.js";
+import { notificationManager } from "./notification.js";
 
 const manager = (function () {
   let table,
@@ -387,7 +388,7 @@ const manager = (function () {
       // }
     } catch (err) {
       console.error("Fetch error:", err);
-      alert(`An error occurred: ${err.message}. Please try again.`);
+      notificationManager.error(`An error occurred: ${err.message}. Please try again.`);
 
       if (submitBtn) {
         submitBtn.disabled = false;
@@ -398,7 +399,7 @@ const manager = (function () {
   function copySelectedRowsToClipboard() {
     const selectedItems = rowsData.filter((it) => it.selected);
     if (selectedItems.length === 0) {
-      alert("No rows selected to copy.");
+      notificationManager.warning("No rows selected to copy.");
       return;
     }
 
@@ -422,15 +423,15 @@ const manager = (function () {
         .writeText(textToCopy)
         .then(() => {
           const s = selectedItems.length > 1 ? "s" : "";
-          alert(`Copied ${selectedItems.length} row${s}`);
+          notificationManager.success(`Copied ${selectedItems.length} row${s}`);
         })
         .catch((err) => {
           console.error("Error copying selected rows: ", err);
-          alert("Error: Could not copy selected rows.");
+          notificationManager.error("Error: Could not copy selected rows.");
         });
     } catch (err) {
       console.error("Error during copy formatting:", err);
-      alert("Error: Could not format data for copying.");
+      notificationManager.error("Error: Could not format data for copying.");
     }
   }
 
@@ -508,6 +509,14 @@ const manager = (function () {
         updateSelectedCount();
 
         if (restoreBtn) restoreBtn.disabled = false;
+
+        // Mostrar notificación de éxito
+        if (result.message) {
+          notificationManager.success(result.message);
+        } else {
+          const count = ids_to_delete.length;
+          notificationManager.success(`Se ${count === 1 ? 'eliminó' : 'eliminaron'} ${count} fila${count === 1 ? '' : 's'}.`);
+        }
       });
     });
 
@@ -517,8 +526,10 @@ const manager = (function () {
         "This will restore all previously deleted rows. Are you sure?";
 
       handleFormSubmit(restoreForm, confirmMsg, (result) => {
-        alert(result.message);
-        location.reload();
+        notificationManager.success(result.message);
+        setTimeout(() => {
+          location.reload();
+        }, 1000);
       });
     });
 
@@ -532,6 +543,13 @@ const manager = (function () {
         render();
         updateSelectedCount();
         if (restoreBtn) restoreBtn.disabled = true;
+
+        // Mostrar notificación de éxito
+        if (result.message) {
+          notificationManager.success(result.message);
+        } else {
+          notificationManager.success("Todos los datos han sido eliminados permanentemente.");
+        }
       });
     });
 
@@ -582,11 +600,11 @@ const manager = (function () {
         })
         .then((txt) => {
           navigator.clipboard.writeText(txt);
-          alert("Copied Schedule");
+          notificationManager.success("Copied Schedule");
         })
         .catch((err) => {
           console.error(err);
-          alert("Error: No se pudo copiar. Verifica el endpoint /schedule.");
+          notificationManager.error("Error: No se pudo copiar. Verifica el endpoint /schedule.");
         });
     });
 
@@ -599,9 +617,12 @@ const manager = (function () {
       navigator.clipboard
         .writeText(textToCopy)
         .then(() => {
-          alert("Copied Instructors");
+          notificationManager.success("Copied Instructors");
         })
-        .catch((err) => console.error(err));
+        .catch((err) => {
+          console.error(err);
+          notificationManager.error("Error: Could not copy instructors.");
+        });
     });
 
     tbody.addEventListener("contextmenu", (e) => {

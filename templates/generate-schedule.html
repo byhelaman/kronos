@@ -1,15 +1,5 @@
 {% extends "base.html" %} {% block content %} {% import "macros/icons.html" as
-icons %} {% include "header.html" %} {% if upload_errors and
-upload_errors|length > 0 %}
-<div class="upload-errors-container">
-  <h4>Archivos Omitidos Durante la Carga</h4>
-  <ul class="upload-errors-list">
-    {% for error in upload_errors %}
-    <li>{{ icons.AlertTriangleIcon(16) }} {{ error }}</li>
-    {% endfor %}
-  </ul>
-</div>
-{% endif %} {% if data %} {% include "dashboard.html" %} {% else %}
+icons %} {% include "header.html" %} {% if data %} {% include "dashboard.html" %} {% else %}
 <div class="upload-container">
   <form class="upload-form" action="/generate-schedule" method="POST" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
@@ -29,7 +19,7 @@ upload_errors|length > 0 %}
 
     <div class="upload-form-actions">
       {% if show_cancel %}
-      <a href="/generate-schedule" class="btn btn--secondary">Cancel</a>
+      <button type="button" id="cancel-btn" class="btn btn--secondary">Cancel</button>
       {% endif %}
       <button id="process-btn" type="submit" class="btn btn--primary" disabled>
         <span class="btn-text"> Process {{ icons.SendIcon(16) }} </span>
@@ -39,17 +29,32 @@ upload_errors|length > 0 %}
   </form>
 </div>
 
-{% endif %} {% if data %}
+{% endif %}
+
 <script type="module">
   import { TableManager } from "/static/js/table-manager.js";
+  import { notificationManager } from "/static/js/notification.js";
 
+  // Hacer notificationManager disponible globalmente
+  window.notificationManager = notificationManager;
+
+  {% if data %}
   document.addEventListener("DOMContentLoaded", () => {
     TableManager.init("#data-preview-table");
   });
-</script>
-{% endif %}
+  {% endif %}
 
-<script>
+  // Mostrar notificaciones de errores de carga si existen
+  {% if upload_errors and upload_errors | length > 0 %}
+  document.addEventListener("DOMContentLoaded", () => {
+    const uploadErrors = {{ upload_errors | tojson
+  }};
+  uploadErrors.forEach(error => {
+    notificationManager.warning(error);
+  });
+  });
+  {% endif %}
+
   const fileIconHtml = `{{ icons.FileIcon(16) }}`;
   const trashIconHtml = `{{ icons.TrashIcon(16) }}`;
 
@@ -57,6 +62,7 @@ upload_errors|length > 0 %}
   const listContainer = document.getElementById("file-list-container");
   const uploadForm = document.querySelector(".upload-form");
   const processButton = document.getElementById("process-btn");
+  const cancelButton = document.getElementById("cancel-btn");
   const errorMessageEl = document.getElementById("file-error-message");
   const uploadZone = document.querySelector(".upload-zone");
 
@@ -73,10 +79,8 @@ upload_errors|length > 0 %}
   function setUploadDisabled(disabled) {
     if (disabled) {
       uploadZone.classList.add("disabled");
-      // fileInput.disabled = true;
     } else {
       uploadZone.classList.remove("disabled");
-      // fileInput.disabled = false;
     }
   }
 
@@ -90,13 +94,27 @@ upload_errors|length > 0 %}
   }
 
   function showError(message) {
-    errorMessageEl.style.display = "block";
-    errorMessageEl.textContent = message;
+    // Usar notificaciones modernas
+    if (window.notificationManager) {
+      window.notificationManager.error(message);
+      errorMessageEl.style.display = "none";
+    } else {
+      // Fallback al método anterior si notificationManager no está disponible
+      errorMessageEl.style.display = "block";
+      errorMessageEl.textContent = message;
+    }
   }
 
   function clearError() {
     errorMessageEl.textContent = "";
     errorMessageEl.style.display = "none";
+  }
+
+  function clearFiles() {
+    fileStore = new DataTransfer();
+    updateFileInput();
+    renderFileList();
+    clearError();
   }
 
   function renderFileList() {
@@ -356,9 +374,32 @@ upload_errors|length > 0 %}
       processButton.classList.add("is-loading");
       setUploadDisabled(true);
 
+      // Deshabilitar botón Cancel durante el procesamiento
+      if (cancelButton) {
+        cancelButton.disabled = true;
+      }
+
       document.querySelectorAll(".remove-file-btn").forEach((btn) => {
         btn.disabled = true;
       });
+    });
+  }
+
+  // Manejar botón Cancel
+  if (cancelButton) {
+    cancelButton.addEventListener("click", () => {
+      // Solo permitir cancelar si no está procesando
+      if (processButton.disabled && processButton.classList.contains("is-loading")) {
+        return; // No hacer nada si está procesando
+      }
+
+      // Si hay archivos seleccionados, limpiarlos
+      if (fileStore.files.length > 0) {
+        clearFiles();
+      } else {
+        // Si no hay archivos, redirigir a la vista del horario
+        window.location.href = "/generate-schedule";
+      }
     });
   }
 
@@ -372,6 +413,9 @@ upload_errors|length > 0 %}
       } else {
         processButton.disabled = false;
       }
+    }
+    if (cancelButton) {
+      cancelButton.disabled = false;
     }
     document.querySelectorAll(".remove-file-btn").forEach((btn) => {
       btn.disabled = false;
