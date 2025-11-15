@@ -81,7 +81,9 @@ def decrypt_token(encrypted_token: str) -> str:
         decrypted_bytes = cipher_suite.decrypt(encrypted_token.encode())
         return decrypted_bytes.decode()
     except InvalidToken as e:
-        print(f"Error de descifrado: {e}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error de descifrado: {e}")
         raise e
 
 
@@ -193,8 +195,9 @@ async def validate_csrf(request: Request, csrf_token: str = Form(...)):
     
     Esta función:
     1. Valida que el token CSRF enviado coincida con el almacenado en sesión
-    2. Usa comparación segura (timing-safe) para prevenir ataques de temporización
-    3. Regenera el token después de cada uso exitoso (token rotation)
+    2. Verifica que el token no haya expirado
+    3. Usa comparación segura (timing-safe) para prevenir ataques de temporización
+    4. Regenera el token después de cada uso exitoso (token rotation)
     
     Args:
         request: Objeto Request de FastAPI
@@ -204,8 +207,11 @@ async def validate_csrf(request: Request, csrf_token: str = Form(...)):
         Nuevo token CSRF generado después de la validación exitosa
         
     Raises:
-        HTTPException: Si el token es inválido, está vacío o excede el tamaño máximo
+        HTTPException: Si el token es inválido, está vacío, expirado o excede el tamaño máximo
     """
+    import time
+    from core.config import CSRF_TOKEN_TTL_SECONDS
+    
     # Validar longitud del token para prevenir DoS (ataques de denegación de servicio)
     if not csrf_token or len(csrf_token) > 100:
         raise HTTPException(
@@ -215,6 +221,15 @@ async def validate_csrf(request: Request, csrf_token: str = Form(...)):
 
     session = request.state.session
     stored_token = session.get("csrf_token")
+    token_timestamp = session.get("csrf_token_timestamp", 0)
+    current_time = time.time()
+
+    # Validar expiración del token CSRF
+    if token_timestamp and (current_time - token_timestamp) > CSRF_TOKEN_TTL_SECONDS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token CSRF expirado. Por favor, recarga la página.",
+        )
 
     # Comparación segura contra timing attacks usando secrets.compare_digest
     # Esto garantiza que el tiempo de ejecución sea constante independientemente
@@ -229,29 +244,86 @@ async def validate_csrf(request: Request, csrf_token: str = Form(...)):
     # Esto previene reutilización de tokens capturados
     new_token = secrets.token_hex(32)
     session["csrf_token"] = new_token
+    session["csrf_token_timestamp"] = current_time
 
     return new_token
 
 
 def get_or_create_csrf_token(session: dict) -> str:
     """
-    Obtiene el token CSRF de la sesión o crea uno nuevo si no existe.
+    Obtiene el token CSRF de la sesión o crea uno nuevo si no existe o ha expirado.
     
     Esta función se usa para generar tokens CSRF en formularios GET
-    y asegurar que cada sesión tenga un token válido.
+    y asegurar que cada sesión tenga un token válido con expiración.
     
     Args:
         session: Diccionario de sesión del usuario
         
     Returns:
-        Token CSRF existente o recién generado
+        Token CSRF existente (si no ha expirado) o recién generado
     """
+    import time
+    from core.config import CSRF_TOKEN_TTL_SECONDS
+    
     token = session.get("csrf_token")
-    if not token:
-        # Generar token criptográficamente seguro de 32 bytes (64 caracteres hex)
-        token = secrets.token_hex(32)
-        session["csrf_token"] = token
+    token_timestamp = session.get("csrf_token_timestamp", 0)
+    current_time = time.time()
+    
+    # Verificar si el token existe y no ha expirado
+    if token and token_timestamp:
+        if (current_time - token_timestamp) < CSRF_TOKEN_TTL_SECONDS:
+            return token
+    
+    # Generar nuevo token si no existe o ha expirado
+    token = secrets.token_hex(32)
+    session["csrf_token"] = token
+    session["csrf_token_timestamp"] = current_time
     return token
+
+
+# ============================================================================
+# VALIDACIÓN DE ORIGIN/REFERER
+# ============================================================================
+
+def validate_origin(request: Request) -> bool:
+    """
+    Valida el header Origin o Referer para prevenir CSRF.
+    
+    Esta función verifica que el request provenga del mismo origen,
+    proporcionando una capa adicional de seguridad además del token CSRF.
+    
+    Args:
+        request: Objeto Request de FastAPI
+        
+    Returns:
+        True si el origen es válido, False en caso contrario
+    """
+    origin = request.headers.get("Origin")
+    referer = request.headers.get("Referer")
+    
+    # Si no hay Origin ni Referer, puede ser un request directo (permitir en desarrollo)
+    if not origin and not referer:
+        from core.config import IS_PRODUCTION
+        return not IS_PRODUCTION  # Permitir solo en desarrollo
+    
+    # Obtener el host del request
+    host = request.headers.get("Host", "")
+    if not host:
+        return False
+    
+    # Construir URL base esperada
+    scheme = "https" if request.url.scheme == "https" else "http"
+    expected_origin = f"{scheme}://{host}"
+    
+    # Validar Origin (preferido)
+    if origin:
+        return origin.rstrip("/") == expected_origin.rstrip("/")
+    
+    # Validar Referer como fallback
+    if referer:
+        return referer.startswith(expected_origin)
+    
+    return False
 
 
 # ============================================================================

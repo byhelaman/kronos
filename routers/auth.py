@@ -144,6 +144,10 @@ async def login_post(
         RedirectResponse: Redirección a la página principal si el login es exitoso,
                          o de vuelta al login con mensaje de error si falla
     """
+    # Validar Origin/Referer como capa adicional de seguridad CSRF
+    if not security.validate_origin(request):
+        return RedirectResponse(url="/login?error=invalid_origin", status_code=303)
+    
     # Validar entradas antes de procesar
     try:
         validated_username, validated_password = validate_login_input(
@@ -213,6 +217,7 @@ async def logout(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/profile", response_class=HTMLResponse)
+@security.limiter.limit("30/minute")
 async def user_profile(
     request: Request, current_user: User = Depends(security.get_current_active_user)
 ):

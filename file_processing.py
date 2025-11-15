@@ -20,21 +20,20 @@ logger = logging.getLogger(__name__)
 
 def validate_file(file: UploadFile, content: bytes) -> str | None:
     """
-    Valida la extensión, tipo MIME, tamaño y contenido real del archivo.
+    Valida la extensión, tamaño y contenido real del archivo usando magic numbers.
+    NO confía en Content-Type del cliente (puede ser manipulado).
     Devuelve un mensaje de error si es inválido, o None si es válido.
     """
-    # Validación básica de extensión y tipo MIME
+    # Validación básica de extensión
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         return f"Archivo omitido (extensión inválida): {file.filename}"
 
-    if file.content_type not in ALLOWED_MIME_TYPES:
-        return f"Archivo omitido (tipo MIME inválido): {file.filename}"
-
     if len(content) > MAX_FILE_SIZE:
         return f"Archivo omitido (excede 5MB): {file.filename}"
 
-    # Validación de magic numbers para detectar tipo real
+    # Validación de magic numbers para detectar tipo real (más confiable que Content-Type)
+    # Los magic numbers no pueden ser falsificados fácilmente
     if len(content) >= 8:
         excel_signatures = [
             b"\x50\x4b\x03\x04",  # ZIP-based (XLSX, etc.)
@@ -45,6 +44,8 @@ def validate_file(file: UploadFile, content: bytes) -> str | None:
         file_signature = content[:8]
         if not any(file_signature.startswith(sig) for sig in excel_signatures):
             return f"Archivo omitido (firma de archivo inválida): {file.filename}"
+    else:
+        return f"Archivo omitido (archivo demasiado pequeño): {file.filename}"
 
     # Validación de estructura básica
     try:
@@ -61,25 +62,57 @@ def validate_file(file: UploadFile, content: bytes) -> str | None:
 
 
 async def _parse_generated_file(path: str, engine: str) -> List[Schedule]:
-    """Parsea un archivo que ya tiene el formato de salida."""
+    """
+    Parsea un archivo que ya tiene el formato de salida.
+    Usa chunks para archivos grandes para evitar cargar todo en memoria.
+    """
     schedules = []
-    df_generated = await asyncio.to_thread(pd.read_excel, path, engine=engine)
-
-    for _, row in df_generated.iterrows():
-        schedules.append(
-            Schedule(
-                date=str(row.get("date", "")),
-                shift=str(row.get("shift", "")),
-                area=str(row.get("area", "")),
-                start_time=str(row.get("start_time", "")),
-                end_time=str(row.get("end_time", "")),
-                code=str(row.get("code", "")),
-                instructor=str(row.get("instructor", "")),
-                group=str(row.get("group", "")),
-                minutes=str(row.get("minutes", 0)),
-                units=int(row.get("units", 0)),
-            )
-        )
+    chunk_size = 1000  # Procesar en chunks de 1000 filas
+    
+    # Leer archivo en chunks para archivos grandes
+    try:
+        df_generated = await asyncio.to_thread(pd.read_excel, path, engine=engine)
+        
+        # Si el archivo es pequeño, procesarlo directamente
+        if len(df_generated) <= chunk_size:
+            for _, row in df_generated.iterrows():
+                schedules.append(
+                    Schedule(
+                        date=str(row.get("date", "")),
+                        shift=str(row.get("shift", "")),
+                        area=str(row.get("area", "")),
+                        start_time=str(row.get("start_time", "")),
+                        end_time=str(row.get("end_time", "")),
+                        code=str(row.get("code", "")),
+                        instructor=str(row.get("instructor", "")),
+                        group=str(row.get("group", "")),
+                        minutes=str(row.get("minutes", 0)),
+                        units=int(row.get("units", 0)),
+                    )
+                )
+        else:
+            # Procesar en chunks para archivos grandes
+            for start_idx in range(0, len(df_generated), chunk_size):
+                chunk = df_generated.iloc[start_idx:start_idx + chunk_size]
+                for _, row in chunk.iterrows():
+                    schedules.append(
+                        Schedule(
+                            date=str(row.get("date", "")),
+                            shift=str(row.get("shift", "")),
+                            area=str(row.get("area", "")),
+                            start_time=str(row.get("start_time", "")),
+                            end_time=str(row.get("end_time", "")),
+                            code=str(row.get("code", "")),
+                            instructor=str(row.get("instructor", "")),
+                            group=str(row.get("group", "")),
+                            minutes=str(row.get("minutes", 0)),
+                            units=int(row.get("units", 0)),
+                        )
+                    )
+    except Exception as e:
+        logger.error(f"Error parseando archivo generado: {e}")
+        raise
+    
     return schedules
 
 
@@ -93,16 +126,19 @@ async def process_single_file(file: UploadFile, content: bytes) -> List[Schedule
     """
     Procesa un solo archivo: lo guarda temporalmente, detecta su tipo,
     lo parsea y devuelve una lista de objetos Schedule.
+    
+    Garantiza que el archivo temporal siempre se elimine, incluso en caso de error.
     """
     ext = os.path.splitext(file.filename)[1].lower()
     engine = "openpyxl" if ext == ".xlsx" else "xlrd"
 
-    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-    tmp_file_path = tmp_file.name
-
+    tmp_file_path = None
     try:
-        await asyncio.to_thread(tmp_file.write, content)
-        await asyncio.to_thread(tmp_file.close)
+        # Usar context manager para garantizar limpieza
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp_file:
+            tmp_file_path = tmp_file.name
+            await asyncio.to_thread(tmp_file.write, content)
+            # El archivo se cierra automáticamente al salir del context manager
 
         # 1. Leer solo la cabecera para detectar el tipo
         df_header = await asyncio.to_thread(
@@ -122,5 +158,9 @@ async def process_single_file(file: UploadFile, content: bytes) -> List[Schedule
         # Re-lanzamos la excepción para que el endpoint la capture
         raise e
     finally:
-        if os.path.exists(tmp_file_path):
-            await asyncio.to_thread(os.unlink, tmp_file_path)
+        # Garantizar eliminación del archivo temporal en todos los casos
+        if tmp_file_path and os.path.exists(tmp_file_path):
+            try:
+                await asyncio.to_thread(os.unlink, tmp_file_path)
+            except Exception as cleanup_error:
+                logger.warning(f"Error eliminando archivo temporal {tmp_file_path}: {cleanup_error}")

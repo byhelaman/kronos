@@ -78,6 +78,15 @@ MAX_FILE_SIZE = 5 * 1024 * 1024
 # Longitud máxima para lista de IDs seleccionados (1 MB)
 MAX_SELECTED_IDS_LENGTH = 1048576
 
+# Tamaño máximo de sesión en Redis (10 MB)
+MAX_SESSION_SIZE = 10 * 1024 * 1024
+
+# Tamaño máximo de schedule_data en sesión (5 MB)
+MAX_SCHEDULE_DATA_SIZE = 5 * 1024 * 1024
+
+# TTL para tokens CSRF (1 hora)
+CSRF_TOKEN_TTL_SECONDS = 3600
+
 # Extensiones de archivo permitidas para procesamiento
 ALLOWED_EXTENSIONS = {".xls", ".xlsx"}
 

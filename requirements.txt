@@ -37,3 +37,7 @@ httpx
 psycopg[binary]
 orjson  # Serialización JSON más rápida que json estándar
 httpx[http2]
+
+# Dependencias para asignación automática de Zoom
+rapidfuzz  # Para búsqueda fuzzy de usuarios y reuniones
+python-dotenv  # Para variables de entorno (ya puede estar, pero lo agregamos por si acaso)

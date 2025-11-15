@@ -4,6 +4,7 @@ Middleware para agregar headers de seguridad HTTP.
 """
 import secrets
 from starlette.middleware.base import BaseHTTPMiddleware
+from core import config
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -50,32 +51,43 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
 
         # OPTIMIZACIÓN: Agregar headers de cache para archivos estáticos
-        # Esto mejora significativamente los tiempos de carga en visitas subsecuentes
+        # En desarrollo: deshabilitar caché completamente para ver cambios inmediatos
+        # En producción: cachear archivos estáticos para mejorar rendimiento
         path = request.url.path
         if path.startswith("/static/"):
-            # Determinar el tipo de archivo basado en la extensión
-            static_extensions = [
-                ".css",
-                ".js",
-                ".png",
-                ".jpg",
-                ".jpeg",
-                ".gif",
-                ".svg",
-                ".woff",
-                ".woff2",
-                ".ttf",
-                ".eot",
-                ".ico",
-            ]
-            if any(path.endswith(ext) for ext in static_extensions):
-                # Archivos estáticos: cache por 1 hora, revalidar después
-                response.headers["Cache-Control"] = (
-                    "public, max-age=3600, must-revalidate"
-                )
-                response.headers["Vary"] = "Accept-Encoding"
+            if config.IS_PRODUCTION:
+                # Determinar el tipo de archivo basado en la extensión
+                static_extensions = [
+                    ".css",
+                    ".js",
+                    ".png",
+                    ".jpg",
+                    ".jpeg",
+                    ".gif",
+                    ".svg",
+                    ".woff",
+                    ".woff2",
+                    ".ttf",
+                    ".eot",
+                    ".ico",
+                ]
+                if any(path.endswith(ext) for ext in static_extensions):
+                    # Archivos estáticos: cache por 1 hora, revalidar después
+                    response.headers["Cache-Control"] = (
+                        "public, max-age=3600, must-revalidate"
+                    )
+                    response.headers["Vary"] = "Accept-Encoding"
+                else:
+                    # Otros archivos: cache corto (5 minutos)
+                    response.headers["Cache-Control"] = "public, max-age=300"
             else:
-                # Otros archivos: cache corto (5 minutos)
-                response.headers["Cache-Control"] = "public, max-age=300"
+                # DESARROLLO: Deshabilitar caché completamente
+                # Esto asegura que siempre se carguen los archivos más recientes
+                response.headers["Cache-Control"] = (
+                    "no-cache, no-store, must-revalidate, max-age=0"
+                )
+                response.headers["Pragma"] = "no-cache"
+                response.headers["Expires"] = "0"
+                response.headers["Vary"] = "Accept-Encoding"
 
         return response

@@ -5,9 +5,10 @@ Define las tablas y relaciones de la base de datos usando el ORM de SQLAlchemy.
 Todos los modelos heredan de Base (declarative base) para mapeo automático.
 """
 
-from sqlalchemy import String, ForeignKey, JSON
+from sqlalchemy import String, ForeignKey, JSON, DateTime, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 from typing import Optional, Dict, Any
+from datetime import datetime
 from database import Base
 
 
@@ -86,3 +87,99 @@ class UserSchedule(Base):
     # Datos del horario en formato JSON
     # Estructura: {"processed_files": [...], "all_rows": [...]}
     schedule_data: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+
+class ZoomUserCache(Base):
+    """
+    Modelo para almacenar usuarios de Zoom en caché local.
+    
+    Esta tabla almacena una copia local de los usuarios de Zoom para
+    facilitar las búsquedas y asignaciones sin necesidad de consultar
+    la API de Zoom en cada operación.
+    
+    Attributes:
+        id: ID único del usuario en Zoom (clave primaria)
+        email: Email del usuario en Zoom
+        display_name: Nombre completo del usuario
+        key_canonical: Clave canónica normalizada para búsquedas rápidas
+    """
+    
+    __tablename__ = "zoom_users_cache"
+    
+    id: Mapped[str] = mapped_column(String(100), primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=True)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    key_canonical: Mapped[str] = mapped_column(String(255), index=True)
+
+
+class ZoomMeetingCache(Base):
+    """
+    Modelo para almacenar reuniones de Zoom en caché local.
+    
+    Esta tabla almacena una copia local de las reuniones de Zoom para
+    facilitar las búsquedas y asignaciones sin necesidad de consultar
+    la API de Zoom en cada operación.
+    
+    Attributes:
+        id: ID único de la reunión en Zoom (clave primaria)
+        topic: Título/tema de la reunión
+        host_id: ID del usuario host actual de la reunión
+        key_canonical: Clave canónica normalizada para búsquedas rápidas
+    """
+    
+    __tablename__ = "zoom_meetings_cache"
+    
+    id: Mapped[str] = mapped_column(String(100), primary_key=True, index=True)
+    topic: Mapped[str] = mapped_column(String(500), nullable=False)
+    host_id: Mapped[str] = mapped_column(String(100), index=True)
+    key_canonical: Mapped[str] = mapped_column(String(500), index=True)
+
+
+class ZoomAssignmentHistory(Base):
+    """
+    Modelo para almacenar el historial de asignaciones de reuniones de Zoom.
+    
+    Registra todas las operaciones de reasignación de hosts de reuniones,
+    incluyendo el estado (éxito o error) para auditoría y debugging.
+    
+    Attributes:
+        id: ID autoincremental del registro
+        timestamp: Fecha y hora de la asignación
+        meeting_id: ID de la reunión reasignada
+        meeting_topic: Título de la reunión
+        previous_host_id: ID del host anterior
+        new_host_id: ID del nuevo host
+        status: Estado de la operación (SUCCESS o mensaje de error)
+        user_id: ID del usuario de kronos que realizó la asignación
+    """
+    
+    __tablename__ = "zoom_assignment_history"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    meeting_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    meeting_topic: Mapped[str] = mapped_column(String(500), nullable=False)
+    previous_host_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    new_host_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(255), nullable=False)
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True, index=True
+    )
+
+
+class ZoomSyncConfig(Base):
+    """
+    Modelo para almacenar configuración de sincronización con Zoom.
+    
+    Almacena metadatos sobre la última sincronización realizada,
+    permitiendo optimizar las sincronizaciones futuras.
+    
+    Attributes:
+        key: Clave única de configuración (clave primaria)
+        value: Valor de la configuración (JSON o texto)
+    """
+    
+    __tablename__ = "zoom_sync_config"
+    
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(String(1000), nullable=False)

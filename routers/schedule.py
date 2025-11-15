@@ -77,6 +77,11 @@ async def generate_schedule(
     db: AsyncSession = Depends(get_db),
 ):
     """Procesa archivos subidos y genera el horario."""
+    # Validar Origin/Referer como capa adicional de seguridad CSRF
+    if not security.validate_origin(request):
+        return RedirectResponse(
+            url="/generate-schedule?error=invalid_origin", status_code=303
+        )
     schedule_data = request.state.session.get(
         "schedule_data", schedule_business_logic.get_empty_schedule_data()
     )
@@ -90,20 +95,30 @@ async def generate_schedule(
         if file.filename in processed_files_set:
             continue
 
-        # Leer archivo en chunks y validar tamaño antes de leer completamente
+        # Validar tamaño ANTES de leer completamente en memoria
+        # Leer solo chunks pequeños para validar tamaño máximo
         from core.config import MAX_FILE_SIZE
+        chunk_size = 8192  # 8KB chunks
         content = b""
         size = 0
-        chunk_size = 8192  # 8KB chunks
+        max_chunks = (MAX_FILE_SIZE // chunk_size) + 1  # Límite de chunks
         
-        while True:
+        chunk_count = 0
+        while chunk_count < max_chunks:
             chunk = await file.read(chunk_size)
             if not chunk:
                 break
             size += len(chunk)
+            chunk_count += 1
+            
+            # Validar tamaño antes de acumular en memoria
             if size > MAX_FILE_SIZE:
                 upload_errors.append(f"Archivo omitido (excede 5MB): {file.filename}")
+                # Descartar el resto del archivo sin leerlo
+                while await file.read(chunk_size):
+                    pass
                 break
+            
             content += chunk
         
         # Si el archivo excedió el tamaño, continuar con el siguiente
@@ -126,7 +141,9 @@ async def generate_schedule(
             newly_processed_files.append(file.filename)
 
         except Exception as e:
-            print(f"Error processing file {file.filename}: {e}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error processing file {file.filename}: {e}")
             upload_errors.append(f"Error al procesar: {file.filename}")
 
     # 4. Actualizar estado de la sesión
@@ -150,6 +167,7 @@ async def generate_schedule(
 
 
 @router.get("/upload-new", response_class=HTMLResponse)
+@security.limiter.limit("20/minute")
 async def show_upload_form(request: Request):
     """Muestra el formulario para subir nuevos archivos."""
     schedule_data = request.state.session.get(
@@ -182,6 +200,11 @@ async def delete_selected_rows(
     db: AsyncSession = Depends(get_db),
 ):
     """Elimina (marca) filas seleccionadas."""
+    # Validar Origin/Referer como capa adicional de seguridad CSRF
+    if not security.validate_origin(request):
+        return JSONResponse(
+            {"success": False, "message": "Invalid origin."}, status_code=403
+        )
     # Validar y filtrar UUIDs
     ids_to_delete = security.validate_uuid_list(selected_ids)
 
@@ -237,6 +260,11 @@ async def restore_deleted_rows(
     db: AsyncSession = Depends(get_db),
 ):
     """Restaura todas las filas borradas."""
+    # Validar Origin/Referer como capa adicional de seguridad CSRF
+    if not security.validate_origin(request):
+        return JSONResponse(
+            {"success": False, "message": "Invalid origin."}, status_code=403
+        )
     schedule_data = request.state.session.get(
         "schedule_data", schedule_business_logic.get_empty_schedule_data()
     )
@@ -287,6 +315,11 @@ async def delete_data(
     db: AsyncSession = Depends(get_db),
 ):
     """Limpia todos los datos del horario actual."""
+    # Validar Origin/Referer como capa adicional de seguridad CSRF
+    if not security.validate_origin(request):
+        return JSONResponse(
+            {"success": False, "message": "Invalid origin."}, status_code=403
+        )
     # Usar el servicio para obtener un estado vacío
     empty_schedule_data = schedule_business_logic.get_empty_schedule_data()
     request.state.session["schedule_data"] = empty_schedule_data
@@ -316,7 +349,7 @@ async def delete_data(
 
 
 @router.get("/schedule")
-@security.limiter.limit("60/minute")
+@security.limiter.limit("30/minute")
 async def get_schedule_tsv(request: Request):
     """Descarga el horario en formato TSV."""
     schedule_data = request.state.session.get(

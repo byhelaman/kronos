@@ -49,11 +49,6 @@
       });
     }
 
-    // Solución para tooltips pegajosos
-    const tooltipElements = document.querySelectorAll(
-      "button[aria-label], a[aria-label]"
-    );
-
     // --- === CÓDIGO NUEVO PARA EL MENÚ DE COPIAR === ---
     const copyMenuBtn = document.getElementById("copy-menu-btn");
     const copyMenu = document.getElementById("copy-menu");
@@ -81,13 +76,6 @@
       });
     }
     // --- === FIN DEL CÓDIGO NUEVO === ---
-
-    tooltipElements.forEach((el) => {
-      el.addEventListener("click", () => {
-        // Inmediatamente después del clic, quita el foco
-        el.blur();
-      });
-    });
 
     // --- === CÓDIGO NUEVO PARA EL BOTÓN DE DESCARGA === ---
     const downloadBtn = document.getElementById("download-btn");

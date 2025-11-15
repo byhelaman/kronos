@@ -23,7 +23,7 @@ icons %} {% include "header.html" %} {% if data %} {% include "dashboard.html" %
       {% endif %}
       <button id="process-btn" type="submit" class="btn btn--primary" disabled>
         <span class="btn-text"> Process {{ icons.SendIcon(16) }} </span>
-        <span class="btn-loader"> Process {{ icons.LoaderIcon(16) }} </span>
+        <span class="btn-loader">{{ icons.LoaderIcon(16) }}</span>
       </button>
     </div>
   </form>
@@ -31,9 +31,12 @@ icons %} {% include "header.html" %} {% if data %} {% include "dashboard.html" %
 
 {% endif %}
 
+{% include "zoom-assignment-modal.html" %}
+
 <script type="module" nonce="{{ csp_nonce }}">
   import { TableManager } from "/static/js/table-manager.js";
   import { notificationManager } from "/static/js/notification.js";
+  import "/static/js/zoom-assignment.js";
 
   // Hacer notificationManager disponible globalmente
   window.notificationManager = notificationManager;

@@ -32,11 +32,17 @@ logger = logging.getLogger(__name__)
 # health_check_interval: verificar salud de conexiones periódicamente
 redis_client = redis.from_url(
     REDIS_URL,
-    decode_responses=True,
+    decode_responses=False,  # Cambiar a False para usar bytes directamente (más eficiente)
     max_connections=50,  # Pool de conexiones para mejor rendimiento
     retry_on_timeout=True,  # Reintentar automáticamente en timeouts
     health_check_interval=30,  # Verificar salud de conexiones cada 30s
 )
+
+# Circuit breaker simple para Redis
+_redis_failure_count = 0
+_redis_last_failure_time = 0
+REDIS_CIRCUIT_BREAKER_THRESHOLD = 5  # Número de fallos antes de abrir el circuito
+REDIS_CIRCUIT_BREAKER_TIMEOUT = 60  # Segundos antes de intentar reconectar
 
 
 class RedisSessionMiddleware(BaseHTTPMiddleware):
@@ -47,10 +53,14 @@ class RedisSessionMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
+        # Declarar variables globales al inicio de la función
+        global _redis_failure_count, _redis_last_failure_time
+        import time
 
         session_id = request.cookies.get(SESSION_COOKIE_NAME)
         session_data = {}
         new_session = False
+        current_time = time.time()
 
         # Validar formato del session_id para prevenir inyección
         if session_id:
@@ -58,20 +68,38 @@ class RedisSessionMiddleware(BaseHTTPMiddleware):
             if not security.validate_uuid(session_id):
                 logger.warning(f"Invalid session_id format: {session_id[:20]}...")
                 session_id = None
-            try:
-                data_json = await redis_client.get(f"session:{session_id}")
-                if data_json:
-                    # Usar orjson si está disponible para mejor rendimiento
-                    if _USE_ORJSON:
-                        session_data = orjson.loads(data_json)
+            else:
+                # Circuit breaker: verificar si Redis está disponible
+                
+                # Si el circuito está abierto, verificar si podemos intentar reconectar
+                if _redis_failure_count >= REDIS_CIRCUIT_BREAKER_THRESHOLD:
+                    if (current_time - _redis_last_failure_time) < REDIS_CIRCUIT_BREAKER_TIMEOUT:
+                        logger.warning("Redis circuit breaker is OPEN, skipping session read")
+                        session_id = None
                     else:
-                        session_data = json.loads(data_json)
-                else:
-                    session_id = None
-                    logger.info("Sesión no encontrada en Redis")
-            except Exception as e:
-                logger.error(f"Error al leer de Redis: {e}")
-                session_id = None
+                        # Intentar resetear el circuito
+                        _redis_failure_count = 0
+                        logger.info("Redis circuit breaker reset, attempting connection")
+                
+                if session_id:  # Solo intentar si aún tenemos session_id válido
+                    try:
+                        data_bytes = await redis_client.get(f"session:{session_id}")
+                        if data_bytes:
+                            # Usar orjson si está disponible para mejor rendimiento
+                            if _USE_ORJSON:
+                                session_data = orjson.loads(data_bytes)
+                            else:
+                                session_data = json.loads(data_bytes.decode('utf-8'))
+                            # Resetear contador de fallos en caso de éxito
+                            _redis_failure_count = 0
+                        else:
+                            session_id = None
+                            logger.info("Sesión no encontrada en Redis")
+                    except Exception as e:
+                        logger.error(f"Error al leer de Redis: {e}")
+                        _redis_failure_count += 1
+                        _redis_last_failure_time = current_time
+                        session_id = None
 
         if not session_id:
             new_session = True
@@ -110,7 +138,6 @@ class RedisSessionMiddleware(BaseHTTPMiddleware):
             cached_user = session_data.get("_cached_user")
             cache_timestamp = session_data.get("_user_cache_timestamp", 0)
             CACHE_TTL_SECONDS = 300  # Cache por 5 minutos
-            current_time = time.time()
             needs_refresh = (current_time - cache_timestamp) > CACHE_TTL_SECONDS
 
             if not cached_user or needs_refresh:
@@ -148,20 +175,25 @@ class RedisSessionMiddleware(BaseHTTPMiddleware):
                                 f"Usuario autenticado: {user_db_model.username}"
                             )
 
-                            # --- OPTIMIZACIÓN: Solo cargar horario si no existe en sesión o está vacío ---
-                            # El horario se carga una vez y se mantiene en sesión
-                            # Se actualiza solo cuando se guarda explícitamente
+                            # --- OPTIMIZACIÓN: Carga lazy de schedule_data ---
+                            # Solo cargar schedule si se marca explícitamente como necesario
+                            # o si no existe en sesión. Esto evita cargar datos grandes innecesariamente
                             schedule_data = session_data.get("schedule_data")
-                            if not schedule_data or not schedule_data.get("all_rows"):
+                            schedule_loaded = session_data.get("_schedule_loaded", False)
+                            
+                            # Solo cargar si no está cargado o está vacío
+                            if not schedule_loaded or not schedule_data or not schedule_data.get("all_rows"):
                                 db_schedule = await schedule_repo.get_by_user_id(
                                     db_session, user_db_model.id
                                 )
                                 if db_schedule:
                                     session_data["schedule_data"] = db_schedule
+                                    session_data["_schedule_loaded"] = True
                                 else:
                                     session_data["schedule_data"] = (
                                         schedule_service.get_empty_schedule_data()
                                     )
+                                    session_data["_schedule_loaded"] = True
 
                         else:
                             # Usuario no existe o inactivo, limpiar sesión
@@ -229,16 +261,41 @@ class RedisSessionMiddleware(BaseHTTPMiddleware):
                     request.state.session["user_id"] = None
                     request.state.session["is_authenticated"] = False
 
+                # Validar tamaño de sesión antes de guardar
+                from core.config import MAX_SESSION_SIZE
+                import sys
+                
+                # Calcular tamaño aproximado de la sesión
+                session_size = sys.getsizeof(str(request.state.session))
+                if session_size > MAX_SESSION_SIZE:
+                    logger.warning(f"Sesión excede tamaño máximo ({session_size} bytes), truncando schedule_data")
+                    # Truncar schedule_data si es muy grande
+                    if "schedule_data" in request.state.session:
+                        schedule_data = request.state.session["schedule_data"]
+                        if sys.getsizeof(str(schedule_data)) > MAX_SESSION_SIZE // 2:
+                            # Limpiar schedule_data grande, se cargará desde BD cuando se necesite
+                            request.state.session["schedule_data"] = schedule_service.get_empty_schedule_data()
+                            request.state.session["_schedule_loaded"] = False
+                
                 # Usar orjson si está disponible para mejor rendimiento
+                # Redis puede aceptar bytes directamente, evitando decode innecesario
                 if _USE_ORJSON:
-                    data_to_save_json = orjson.dumps(request.state.session).decode()
+                    data_to_save = orjson.dumps(request.state.session)
                 else:
-                    data_to_save_json = json.dumps(request.state.session)
-                await redis_client.set(
-                    f"session:{session_id}",
-                    data_to_save_json,
-                    ex=60 * 60 * 8,  # 8 horas
-                )
+                    data_to_save = json.dumps(request.state.session).encode('utf-8')
+                
+                try:
+                    await redis_client.set(
+                        f"session:{session_id}",
+                        data_to_save,
+                        ex=60 * 60 * 8,  # 8 horas
+                    )
+                    # Resetear contador de fallos en caso de éxito
+                    _redis_failure_count = 0
+                except Exception as e:
+                    logger.error(f"Error guardando la sesión en Redis: {e}")
+                    _redis_failure_count += 1
+                    _redis_last_failure_time = current_time
             except Exception as e:
                 logger.error(f"Error guardando la sesión en Redis: {e}")
 

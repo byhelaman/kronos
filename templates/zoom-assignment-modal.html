@@ -1,0 +1,119 @@
+{% import "macros/icons.html" as icons %}
+<!-- Modal for Zoom meeting assignments -->
+<div id="zoom-assignment-modal" class="modal" role="dialog" aria-labelledby="modal-title" aria-hidden="true">
+  <div class="modal-overlay" data-modal-close></div>
+  <div class="modal-container">
+    <div class="modal-header">
+      <h2 id="modal-title" class="modal-title">Assign Zoom Meetings</h2>
+      <button type="button" class="modal-close btn btn--icon" data-modal-close>
+        {{ icons.XIcon(20) }}
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <!-- Loading state -->
+      <div id="modal-loading" class="modal-loading" style="display: none;">
+        <div class="loading-spinner"></div>
+        <p>Processing schedule...</p>
+      </div>
+
+      <!-- Sync error -->
+      <div id="modal-sync-error" class="modal-alert modal-alert--warning" style="display: none;">
+        <p><strong>Empty Cache</strong></p>
+        <p>You need to sync with Zoom first to assign meetings.</p>
+        <button type="button" id="btn-sync-zoom" class="btn btn--primary">Sync with Zoom</button>
+      </div>
+
+      <!-- Filters and actions -->
+      <div id="modal-filters" class="modal-filters" style="display: none;">
+        <div class="filter-tabs">
+          <button type="button" class="filter-tab active" data-filter="all">All</button>
+          <button type="button" class="filter-tab" data-filter="to_update">To Update</button>
+          <button type="button" class="filter-tab" data-filter="ok">Assigned</button>
+          <button type="button" class="filter-tab" data-filter="not_found">Not Found</button>
+        </div>
+        <div class="filter-actions" id="filter-actions" style="display: none;">
+          <label class="checkbox-label">
+            <input type="checkbox" id="select-all-assignments" />
+            <span>Select all that can be updated</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Results table -->
+      <div id="modal-results" class="modal-results" style="display: none;">
+        <div class="table-container">
+          <table class="data-table" id="assignment-preview-table">
+            <thead>
+              <tr>
+                <th data-sortable="false">
+                  <input type="checkbox" id="select-all-checkbox" aria-label="Select all rows" />
+                </th>
+                <th data-sortable="true">Status</th>
+                <th data-sortable="true">Meeting ID</th>
+                <th data-sortable="true">Meeting Topic</th>
+                <th data-sortable="true">Instructor</th>
+                <th data-sortable="true">Reason</th>
+              </tr>
+            </thead>
+            <tbody id="assignment-table-body">
+              <!-- Filled dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Empty message -->
+      <div id="modal-empty" class="modal-empty" style="display: none;">
+        <p>No meetings found to assign.</p>
+      </div>
+    </div>
+
+    <!-- Context menu for rows -->
+    <div id="assignment-context-menu" class="context-menu">
+      <ul class="context-menu-list">
+        <li>
+          <button type="button" id="copy-assignment-row-action" class="context-menu-item">
+            <span>Copy row</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" id="deselect-all-assignments-action" class="context-menu-item">
+            <span>Deselect all</span>
+          </button>
+        </li>
+      </ul>
+    </div>
+
+    <div class="modal-footer" id="modal-footer" style="display: none;">
+      <div class="footer-stats">
+        <span class="stat-item">
+          <span class="stat-label">Total:</span>
+          <span class="stat-value" id="stat-total">0</span>
+        </span>
+        <span class="split"></span>
+        <span class="stat-item">
+          <span class="stat-label">Assigned:</span>
+          <span class="stat-value" id="stat-ok">0</span>
+        </span>
+        <span class="split"></span>
+        <span class="stat-item">
+          <span class="stat-label">To Update:</span>
+          <span class="stat-value" id="stat-update">0</span>
+        </span>
+        <span class="split"></span>
+        <span class="stat-item">
+          <span class="stat-label">Not Found:</span>
+          <span class="stat-value" id="stat-not-found">0</span>
+        </span>
+      </div>
+      <div class="footer-actions">
+        <button type="button" class="btn btn--secondary" data-modal-close>Cancel</button>
+        <button type="button" id="btn-execute-assignments" class="btn btn--primary" disabled>
+          <span class="btn-text">Execute</span>
+          <span class="btn-loader">{{ icons.LoaderIcon(16) }}</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

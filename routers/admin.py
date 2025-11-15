@@ -90,13 +90,29 @@ def validate_role(role: str) -> str:
 
 
 @router.get("/admin/users", response_class=HTMLResponse)
+@security.limiter.limit("30/minute")
 async def admin_users_list(
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(security.get_current_admin_user),
+    page: int = 1,
+    limit: int = 50,
 ):
-    """Lista todos los usuarios (solo para admins)."""
-    users = await user_repo.get_all(db)
+    """
+    Lista usuarios con paginación (solo para admins).
+    
+    Args:
+        page: Número de página (por defecto 1)
+        limit: Usuarios por página (por defecto 50, máximo 100)
+    """
+    # Validar y limitar parámetros
+    page = max(1, page)
+    limit = min(max(1, limit), 100)  # Máximo 100 usuarios por página
+    offset = (page - 1) * limit
+    
+    users = await user_repo.get_all(db, limit=limit, offset=offset)
+    total_users = await user_repo.count_all(db)
+    total_pages = (total_users + limit - 1) // limit if total_users > 0 else 1
 
     token = security.get_or_create_csrf_token(request.state.session)
 
@@ -107,11 +123,18 @@ async def admin_users_list(
             "users": users,
             "current_user": current_user,
             "csrf_token": token,
+            "page": page,
+            "limit": limit,
+            "total_users": total_users,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1,
         },
     )
 
 
 @router.post("/admin/users", response_class=RedirectResponse)
+@security.limiter.limit("10/minute")
 async def admin_create_user(
     request: Request,
     username: str = Form(...),
@@ -158,6 +181,7 @@ async def admin_create_user(
 
 
 @router.post("/admin/users/{user_id}/delete", response_class=RedirectResponse)
+@security.limiter.limit("10/minute")
 async def admin_delete_user(
     request: Request,
     user_id: str,

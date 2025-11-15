@@ -49,11 +49,41 @@ class UserRepository:
         return await db.get(db_models.User, user_id)
 
     @staticmethod
-    async def get_all(db: AsyncSession) -> List[db_models.User]:
-        """Obtiene todos los usuarios ordenados por nombre de usuario."""
-        query = select(db_models.User).order_by(db_models.User.username)
+    async def get_all(
+        db: AsyncSession, 
+        limit: int = 100, 
+        offset: int = 0
+    ) -> List[db_models.User]:
+        """
+        Obtiene usuarios ordenados por nombre de usuario con paginación.
+        
+        Args:
+            db: Sesión de base de datos
+            limit: Número máximo de usuarios a retornar (por defecto 100)
+            offset: Número de usuarios a saltar (por defecto 0)
+            
+        Returns:
+            Lista de usuarios paginada
+        """
+        query = select(db_models.User).order_by(db_models.User.username).limit(limit).offset(offset)
         result = await db.execute(query)
         return result.scalars().all()
+    
+    @staticmethod
+    async def count_all(db: AsyncSession) -> int:
+        """
+        Cuenta el número total de usuarios en la base de datos.
+        
+        Args:
+            db: Sesión de base de datos
+            
+        Returns:
+            Número total de usuarios
+        """
+        from sqlalchemy import func
+        query = select(func.count(db_models.User.id))
+        result = await db.execute(query)
+        return result.scalar_one()
 
     @staticmethod
     async def create(

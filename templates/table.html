@@ -57,7 +57,7 @@
       <span class="split"></span>
       <div class="wrap-toolbar-actions">
         {% if is_authenticated and current_user %}
-        <button type="button" class="btn btn--icon" aria-label="AutoAssign" disabled>
+        <button type="button" id="btn-auto-assign" class="btn btn--icon" aria-label="Kronos">
           {{ icons.BotIcon(16) }}
         </button>
         {% endif %}
@@ -91,10 +91,7 @@
           <span>Download</span>
           {{ icons.DownloadIcon(16) }}
         </span>
-        <span class="btn-loader">
-          <span>Download</span>
-          {{ icons.LoaderIcon(16) }}
-        </span>
+        <span class="btn-loader">{{ icons.LoaderIcon(16) }}</span>
       </a>
       <!-- <button
         type="button"
