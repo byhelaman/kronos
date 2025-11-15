@@ -94,6 +94,37 @@
     font-family: var(--font-family-base);
 }
 
+/* Estilos personalizados para barras de scroll */
+::-webkit-scrollbar-button {
+    display: none;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-border-medium);
+    border-radius: var(--border-radius-sm);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:active {
+    background: var(--color-primary);
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* Firefox */
+* {
+    scrollbar-color: var(--color-border-medium) transparent;
+}
+
 body {
     height: 100vh;
     background-color: var(--color-background-body);
