@@ -9,7 +9,7 @@ class NotificationManager {
     constructor() {
         this.container = null;
         this.notifications = new Map();
-        this.defaultDuration = 5000; // 5 segundos
+        this.defaultDuration = 10000; // 5 segundos
         this.init();
     }
 

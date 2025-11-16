@@ -30,17 +30,19 @@ class ZoomAssignmentManager {
             btnAutoAssign.addEventListener("click", () => this.openModal());
         }
 
-        // Cerrar modal
-        const closeButtons = this.modal.querySelectorAll("[data-modal-close]");
+        // Cerrar modal (solo botones X y Cancelar, no el overlay)
+        const closeButtons = this.modal.querySelectorAll("button[data-modal-close]");
         closeButtons.forEach((btn) => {
             btn.addEventListener("click", () => this.closeModal());
         });
 
-        // Filtros de tabs
-        const filterTabs = this.modal.querySelectorAll(".filter-tab");
-        filterTabs.forEach((tab) => {
-            tab.addEventListener("click", () => this.switchFilter(tab.dataset.filter));
-        });
+        // Filtro dropdown
+        const filterSelect = document.getElementById("filter-select");
+        if (filterSelect) {
+            filterSelect.addEventListener("change", (e) => {
+                this.switchFilter(e.target.value);
+            });
+        }
 
         // Seleccionar todas - checkbox del header de la tabla
         const selectAllCheckbox = document.getElementById("select-all-checkbox");
@@ -85,13 +87,6 @@ class ZoomAssignmentManager {
 
         // Menú contextual
         this.initContextMenu();
-
-        // Cerrar con ESC
-        document.addEventListener("keydown", (e) => {
-            if (e.key === "Escape" && this.modal.classList.contains("is-open")) {
-                this.closeModal();
-            }
-        });
     }
 
     initContextMenu() {
@@ -106,7 +101,8 @@ class ZoomAssignmentManager {
             if (this.tableComponent) {
                 this.tableComponent.copySelectedRows();
             }
-            contextMenu.style.display = "none";
+            contextMenu.classList.add("modal-section-hidden");
+            contextMenu.classList.remove("modal-section-visible");
         });
 
         // Deseleccionar todo
@@ -114,12 +110,17 @@ class ZoomAssignmentManager {
             if (this.tableComponent) {
                 this.tableComponent.clearSelection();
             }
-            contextMenu.style.display = "none";
+            contextMenu.classList.add("modal-section-hidden");
+            contextMenu.classList.remove("modal-section-visible");
         });
     }
 
     async openModal() {
         this.modal.classList.add("is-open");
+        // Actualizar aria-hidden para accesibilidad
+        this.modal.setAttribute("aria-hidden", "false");
+        // Prevenir scroll del body cuando el modal está abierto
+        document.body.classList.add("modal-open");
         // Restaurar el último filtro activo antes de mostrar loading
         this.activeFilter = this.lastActiveFilter;
         this.showLoading();
@@ -152,6 +153,18 @@ class ZoomAssignmentManager {
 
         try {
             this.showLoading();
+
+            // Limpiar selecciones antes de refrescar para evitar que se restauren selecciones antiguas
+            if (this.tableComponent) {
+                this.tableComponent.clearSelection();
+            }
+            this.filterSelections = {
+                all: new Set(),
+                to_update: new Set(),
+                ok: new Set(),
+                not_found: new Set(),
+            };
+
             // Extraer datos actualizados del horario de la tabla
             const scheduleData = this.extractScheduleData();
 
@@ -162,6 +175,9 @@ class ZoomAssignmentManager {
 
             // Process assignments con datos actualizados
             await this.processAssignments(scheduleData);
+
+            // Actualizar el botón después de refrescar
+            this.updateExecuteButton();
         } catch (error) {
             console.error("Error refreshing modal:", error);
             this.showError("Error refreshing schedule. Please try again.");
@@ -240,20 +256,24 @@ class ZoomAssignmentManager {
         document.getElementById("stat-not-found").textContent = data.summary.not_found;
 
         if (data.summary.total === 0) {
-            document.getElementById("modal-empty").style.display = "block";
+            this.showSection("modal-empty");
             return;
         }
 
         // Show filters and table
-        document.getElementById("modal-filters").style.display = "block";
-        document.getElementById("modal-results").style.display = "block";
-        document.getElementById("modal-footer").style.display = "flex";
+        this.showSection("modal-filters");
+        this.showSection("modal-results");
+        this.showSection("modal-footer");
 
         // Render table primero (necesita los datos para aplicar el filtro)
         this.renderTable(data);
 
         // Restaurar el filtro activo y aplicar el switchFilter para actualizar la vista
-        // Esto asegura que el tab visual esté activo y la tabla se filtre correctamente
+        // Esto asegura que el select visual tenga el valor correcto y la tabla se filtre correctamente
+        const filterSelect = document.getElementById("filter-select");
+        if (filterSelect) {
+            filterSelect.value = this.activeFilter;
+        }
         this.switchFilter(this.activeFilter);
 
         // Update execute button
@@ -773,15 +793,20 @@ class ZoomAssignmentManager {
         // Actualizar también el último filtro activo para que se mantenga al cerrar/abrir el modal
         this.lastActiveFilter = filter;
 
-        // Update active tabs
-        document.querySelectorAll(".filter-tab").forEach((tab) => {
-            tab.classList.toggle("active", tab.dataset.filter === filter);
-        });
+        // Update filter select
+        const filterSelect = document.getElementById("filter-select");
+        if (filterSelect) {
+            filterSelect.value = filter;
+        }
 
         // Mostrar/ocultar filter-actions solo cuando el filtro es "all"
         const filterActions = document.getElementById("filter-actions");
         if (filterActions) {
-            filterActions.style.display = filter === "all" ? "flex" : "none";
+            if (filter === "all") {
+                this.showSection("filter-actions");
+            } else {
+                this.hideSection("filter-actions");
+            }
         }
 
         // Deshabilitar select-all-checkbox en filtros donde no hay filas seleccionables
@@ -881,13 +906,36 @@ class ZoomAssignmentManager {
         }
 
         try {
-            // Convert selected to assignment format
-            const assignments = selectedRows.map((item) => {
-                return {
-                    meeting_id: item.meeting_id,
-                    instructor_email: item.instructor_email,
-                };
-            });
+            // Filter only selectable rows (to_update status) and validate required fields
+            const assignments = selectedRows
+                .filter((item) => {
+                    // Only process rows with status "to_update" that have required fields
+                    return item.status === "to_update" &&
+                        item.meeting_id &&
+                        item.instructor_email;
+                })
+                .map((item) => {
+                    return {
+                        meeting_id: item.meeting_id,
+                        instructor_email: item.instructor_email,
+                    };
+                });
+
+            if (assignments.length === 0) {
+                const invalidCount = selectedRows.filter(r => r.status !== "to_update").length;
+                const missingFieldsCount = selectedRows.filter(r => r.status === "to_update" && (!r.meeting_id || !r.instructor_email)).length;
+
+                let errorMsg = "No valid assignments to execute. ";
+                if (invalidCount > 0) {
+                    errorMsg += `${invalidCount} row(s) are not in 'To Update' status. `;
+                }
+                if (missingFieldsCount > 0) {
+                    errorMsg += `${missingFieldsCount} row(s) are missing required fields. `;
+                }
+                errorMsg += "Please select rows with 'To Update' status that have meeting_id and instructor_email.";
+
+                throw new Error(errorMsg);
+            }
 
             const response = await fetch("/zoom/assignments/execute", {
                 method: "POST",
@@ -902,21 +950,80 @@ class ZoomAssignmentManager {
             const result = await response.json();
 
             if (!response.ok) {
-                throw new Error(result.error || "Error executing assignments");
+                let errorMessage = result.error || "Error executing assignments";
+                if (result.invalid_assignments && result.invalid_assignments.length > 0) {
+                    errorMessage += ` (${result.invalid_assignments.length} invalid assignment(s))`;
+                }
+                throw new Error(errorMessage);
             }
 
             // Show result
+            const successCount = result.stats?.success || 0;
+            const errorCount = result.stats?.errors || 0;
+            const totalProcessed = successCount + errorCount;
+
             if (window.notificationManager) {
-                window.notificationManager.success(
-                    `Assignments completed: ${result.stats.success} successful, ${result.stats.errors} errors`
-                );
+                if (totalProcessed > 0) {
+                    let message = `Assignments completed: ${successCount} successful`;
+                    if (errorCount > 0) {
+                        message += `, ${errorCount} error${errorCount > 1 ? 's' : ''}`;
+
+                        // Si hay errores, mostrar información adicional
+                        if (errorCount > 0 && successCount === 0) {
+                            message += ". Check server logs for details.";
+                        } else if (errorCount > 0) {
+                            message += ". Some assignments may have failed.";
+                        }
+                    }
+
+                    if (errorCount > 0) {
+                        window.notificationManager.warning(message);
+                    } else {
+                        window.notificationManager.success(message);
+                    }
+                } else {
+                    window.notificationManager.warning(
+                        `No assignments were processed. Please check your selections.`
+                    );
+                }
             }
 
-            // Close modal and reload
-            this.closeModal();
-            setTimeout(() => {
-                window.location.reload();
-            }, 1000);
+            // Limpiar selecciones después de ejecutar exitosamente
+            if (totalProcessed > 0 && successCount > 0) {
+                // Limpiar todas las selecciones guardadas por filtro
+                this.filterSelections = {
+                    all: new Set(),
+                    to_update: new Set(),
+                    ok: new Set(),
+                    not_found: new Set(),
+                };
+
+                // Limpiar selecciones del componente de tabla
+                if (this.tableComponent) {
+                    this.tableComponent.clearSelection();
+                }
+
+                // Actualizar el botón para que muestre "Execute" sin número
+                this.updateExecuteButton();
+            }
+
+            // Refresh strategy based on results
+            if (totalProcessed > 0 && successCount > 0) {
+                // Si hubo asignaciones exitosas, refrescar el modal para mostrar los nuevos estados
+                // Esperar un momento para que Zoom actualice la caché
+                setTimeout(async () => {
+                    if (this.isModalOpen()) {
+                        // Si el modal está abierto, refrescarlo con los datos actualizados
+                        await this.refreshModal();
+                    } else {
+                        // Si el modal está cerrado, solo cerrar sin recargar
+                        // Los datos se actualizarán la próxima vez que se abra el modal
+                    }
+                }, 1500);
+            } else {
+                // Si no hubo éxitos, cerrar el modal sin refrescar
+                this.closeModal();
+            }
         } catch (error) {
             console.error("Error executing assignments:", error);
             if (window.notificationManager) {
@@ -925,6 +1032,10 @@ class ZoomAssignmentManager {
         } finally {
             btnExecute.disabled = false;
             btnExecute.classList.remove("is-loading");
+
+            // Asegurar que el botón se actualice en el finally también
+            this.updateExecuteButton();
+
             if (btnCancel) {
                 btnCancel.disabled = false;
             }
@@ -971,12 +1082,12 @@ class ZoomAssignmentManager {
 
     showLoading() {
         this.hideAllSections();
-        document.getElementById("modal-loading").style.display = "block";
+        this.showSection("modal-loading");
     }
 
     showSyncError() {
         this.hideAllSections();
-        document.getElementById("modal-sync-error").style.display = "block";
+        this.showSection("modal-sync-error");
     }
 
     showError(message) {
@@ -993,13 +1104,29 @@ class ZoomAssignmentManager {
         modalBody.appendChild(errorDiv);
     }
 
+    showSection(sectionId) {
+        const section = document.getElementById(sectionId);
+        if (section) {
+            section.classList.remove("modal-section-hidden");
+            section.classList.add("modal-section-visible");
+        }
+    }
+
+    hideSection(sectionId) {
+        const section = document.getElementById(sectionId);
+        if (section) {
+            section.classList.remove("modal-section-visible");
+            section.classList.add("modal-section-hidden");
+        }
+    }
+
     hideAllSections() {
-        document.getElementById("modal-loading").style.display = "none";
-        document.getElementById("modal-sync-error").style.display = "none";
-        document.getElementById("modal-filters").style.display = "none";
-        document.getElementById("modal-results").style.display = "none";
-        document.getElementById("modal-empty").style.display = "none";
-        document.getElementById("modal-footer").style.display = "none";
+        this.hideSection("modal-loading");
+        this.hideSection("modal-sync-error");
+        this.hideSection("modal-filters");
+        this.hideSection("modal-results");
+        this.hideSection("modal-empty");
+        this.hideSection("modal-footer");
 
         // Eliminar elementos de error dinámicos
         const modalBody = document.querySelector(".modal-body");
@@ -1019,6 +1146,10 @@ class ZoomAssignmentManager {
         this.lastActiveFilter = this.activeFilter;
 
         this.modal.classList.remove("is-open");
+        // Actualizar aria-hidden para accesibilidad
+        this.modal.setAttribute("aria-hidden", "true");
+        // Restaurar scroll del body cuando el modal se cierra
+        document.body.classList.remove("modal-open");
         this.currentData = null;
         // NO resetear activeFilter aquí, se mantiene para la próxima apertura
         // this.activeFilter = "all";
@@ -1054,7 +1185,8 @@ class ZoomAssignmentManager {
         // Cerrar menú contextual si está abierto
         const contextMenu = document.getElementById("assignment-context-menu");
         if (contextMenu) {
-            contextMenu.style.display = "none";
+            contextMenu.classList.add("modal-section-hidden");
+            contextMenu.classList.remove("modal-section-visible");
         }
 
         this.hideAllSections();

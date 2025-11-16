@@ -460,24 +460,48 @@ async def execute_assignments(
         users_by_email = {u.email: u for u in users.values()}
 
         to_update = []
+        invalid_assignments = []
+        
         for assignment in assignment_request.assignments:
             meeting_id = assignment.get("meeting_id")
             instructor_email = assignment.get("instructor_email")
 
             if not meeting_id or not instructor_email:
+                invalid_assignments.append({
+                    "meeting_id": meeting_id,
+                    "instructor_email": instructor_email,
+                    "reason": "Missing meeting_id or instructor_email"
+                })
                 continue
 
             meeting = meetings_by_id.get(meeting_id)
             instructor = users_by_email.get(instructor_email)
 
-            if meeting and instructor:
-                to_update.append((meeting, instructor))
+            if not meeting:
+                invalid_assignments.append({
+                    "meeting_id": meeting_id,
+                    "instructor_email": instructor_email,
+                    "reason": f"Meeting not found: {meeting_id}"
+                })
+                continue
+                
+            if not instructor:
+                invalid_assignments.append({
+                    "meeting_id": meeting_id,
+                    "instructor_email": instructor_email,
+                    "reason": f"Instructor not found: {instructor_email}"
+                })
+                continue
+
+            to_update.append((meeting, instructor))
 
         if not to_update:
             return JSONResponse(
                 {
                     "success": False,
                     "error": "No hay asignaciones válidas para procesar",
+                    "invalid_assignments": invalid_assignments,
+                    "total_received": len(assignment_request.assignments),
                 },
                 status_code=400,
             )

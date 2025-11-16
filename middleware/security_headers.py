@@ -39,11 +39,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Content Security Policy mejorada con nonces
         # Nota: 'unsafe-inline' se mantiene solo para estilos legacy, pero scripts
         # deben usar nonces exclusivamente para máxima seguridad
+        # img-src permite data: URIs solo para imágenes (necesario para flechas de select)
         response.headers["Content-Security-Policy"] = (
             f"default-src 'self'; "
             f"script-src 'self' 'nonce-{nonce}'; "
             f"style-src 'self' 'nonce-{nonce}' 'unsafe-inline' https://fonts.googleapis.com; "
             f"font-src 'self' https://fonts.gstatic.com; "
+            f"img-src 'self' data:; "
             f"connect-src 'self'; "
             f"form-action 'self'; "
             f"base-uri 'self'; "

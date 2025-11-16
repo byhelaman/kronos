@@ -5,7 +5,7 @@
     <div class="wrap-toolbar">
       <div class="toolbar-stats">
         <div class="wrap-toolbar-stats">
-          <span class="stat-item">Items: <span id="stat-items">---</span></span>
+          <span class="stat-item">Items: <span id="count-items">---</span></span>
           <span class="stat-item stat-item--warning">Overlaps: <span id="stat-overlaps">--</span></span>
         </div>
         <!-- boton para cambiar vista -->
@@ -17,7 +17,7 @@
 
       <form id="selection-form" class="selection-info" action="/delete-rows" method="POST">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <span class="selection-text">Selected: <span id="stat-selected">--</span></span>
+        <span class="stat-item">Selected: <span id="stat-selected">--</span></span>
         <input type="hidden" name="selected_ids" id="selected_ids" />
         <!-- <button type="submit" class="btn btn--icon btn--danger" aria-label="Delete selected" disabled> -->
         <button type="submit" class="btn btn--icon" aria-label="Delete selected" disabled>

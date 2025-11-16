@@ -521,7 +521,7 @@ const manager = (function () {
         // Si es "true" o vacío (solo data-sortable), habilitar ordenamiento
         sortable = sortableAttr !== "false";
       }
-      
+
       return {
         label: th.dataset.originalText,
         index: idx,
@@ -568,7 +568,7 @@ const manager = (function () {
       contextMenuSelector: "#row-context-menu",
       copyRowActionSelector: "#copy-row-action",
       selectedCountSelector: "#stat-selected",
-      itemsCountSelector: "#stat-items",
+      itemsCountSelector: "#count-items",
       columns: columnsConfig,
       rowClass: "data-table-row",
       selectedRowClass: "selected-row",
@@ -651,20 +651,20 @@ const manager = (function () {
     // Aplicar orden inicial por defecto: Area (asc)
     const defaultSortCriteria = [];
     const areaColumn = columnsConfig.find((c) => c.label === "Area");
-    
+
     if (areaColumn && areaColumn.sortable) {
       defaultSortCriteria.push({ label: "Area", direction: "asc" });
     }
-    
+
     tableComponent.rowsData = rowsData;
-    
+
     // Si hay columnas de ordenamiento por defecto, aplicarlas
     if (defaultSortCriteria.length > 0) {
       sortCriteria = defaultSortCriteria;
       tableComponent.setSortCriteria(defaultSortCriteria);
       updateSortHeaders();
     }
-    
+
     tableComponent.selectedRows = new Set(
       rowsData.filter((item) => item.selected).map((item) => item.key)
     );

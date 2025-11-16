@@ -684,7 +684,6 @@ a {
 }
 
 .form-group input,
-.form-group select,
 .form-group textarea {
     color: var(--color-text-primary);
     padding: var(--space-xs) var(--space-sm);
@@ -696,11 +695,48 @@ a {
 }
 
 .form-group input:focus,
-.form-group select:focus,
 .form-group textarea:focus {
     outline: none;
     border-color: var(--color-primary);
     box-shadow: var(--box-shadow-focus);
+}
+
+/* Estilo unificado para todos los select (basado en filter-select) */
+select {
+    padding: var(--space-xs) var(--space-sm);
+    padding-right: calc(var(--space-md) + var(--space-sm) + 20px);
+    font-size: var(--font-size-base);
+    color: var(--color-text-primary);
+    background: var(--color-background-light);
+    border: var(--border-default);
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    transition: all var(--transition-default);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23555' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right var(--space-sm) center;
+}
+
+select:hover {
+    border-color: var(--color-primary);
+    background-color: var(--color-background-light);
+}
+
+select:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-color: var(--color-primary);
+}
+
+select:active {
+    background-color: var(--color-background-grey-light);
+}
+
+select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background-color: var(--color-background-grey-light);
 }
 
 .form-row {
@@ -1006,6 +1042,12 @@ a {
 
 .stat-item {
     text-wrap: nowrap;
+
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: 0.875rem;
+
 }
 
 .toolbar-stats {
@@ -1234,15 +1276,15 @@ a {
 }
 
 .selected-row {
-    background-color: var(--color-primary-bg-light);
+    background-color: var(--color-background-grey-light);
 }
 
-.data-table tbody tr.selected-row:hover {
+/* .data-table tbody tr.selected-row:hover {
     outline: 2px solid var(--color-primary);
     outline-offset: -2px;
     position: relative;
     z-index: 2;
-}
+} */
 
 /* ============================================================================
    COMPONENTE: MENÚ CONTEXTUAL
@@ -1912,6 +1954,38 @@ html.dark .theme-icon--moon {
     justify-content: center;
 }
 
+
+/* Clase para ocultar secciones del modal (evita estilos inline para CSP) */
+.modal-section-hidden {
+    display: none;
+}
+
+.modal-section-visible {
+    display: block;
+}
+
+.modal-footer.modal-section-visible {
+    display: flex;
+}
+
+.filter-actions.modal-section-visible {
+    display: flex;
+}
+
+/* Menú contextual - usar clases en lugar de estilos inline */
+.context-menu.modal-section-hidden {
+    display: none;
+}
+
+.context-menu.modal-section-visible {
+    display: block;
+}
+
+/* Prevenir scroll del body cuando el modal está abierto */
+body.modal-open {
+    overflow: hidden;
+}
+
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -1955,12 +2029,12 @@ html.dark .theme-icon--moon {
     background: none;
     border: none;
     font-size: 1.5rem;
-    color: var(--color-text-secondary);
+    /* color: var(--color-text-secondary); */
     cursor: pointer;
-    padding: var(--space-xs);
+    /* padding: var(--space-xs); */
     line-height: 1;
-    transition: color var(--transition-default);
-    border-radius: var(--border-radius-sm);
+    /* transition: color var(--transition-default); */
+    /* border-radius: var(--border-radius-sm); */
 }
 
 .modal-close:hover {
@@ -2124,41 +2198,23 @@ html.dark .theme-icon--moon {
     margin-bottom: var(--space-lg);
 }
 
-.filter-tabs {
+.filter-container {
     display: flex;
-    gap: var(--space-xs);
+    align-items: center;
+    gap: var(--space-md);
     margin-bottom: var(--space-md);
-    border-bottom: var(--border-default);
 }
 
-.filter-tab {
-    background: none;
-    border: none;
-    padding: var(--space-sm) var(--space-md);
+.filter-label {
     font-size: var(--font-size-base);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    transition: all var(--transition-default);
-}
-
-.filter-tab:hover {
-    color: var(--color-text-primary);
-}
-
-.filter-tab:active {
-    color: var(--color-primary);
-}
-
-.filter-tab.active {
-    color: var(--color-primary);
-    border-bottom-color: var(--color-primary);
     font-weight: var(--font-weight-medium);
+    color: var(--color-text-primary);
+    white-space: nowrap;
 }
 
-.filter-tab:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
+/* Estilos específicos para el filtro del modal */
+.filter-select {
+    min-width: 10rem;
 }
 
 .filter-actions {
@@ -2373,8 +2429,13 @@ html.dark .theme-icon--moon {
         grid-template-columns: repeat(2, 1fr);
     }
 
-    .filter-tabs {
-        overflow-x: auto;
-        text-wrap: nowrap;
+    .filter-container {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-sm);
+    }
+
+    select {
+        width: 100%;
     }
 }
